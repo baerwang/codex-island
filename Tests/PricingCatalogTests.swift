@@ -20,6 +20,13 @@ struct PricingCatalogTests {
     """
 
     static func main() async {
+        // Every disk write in this file goes to a temp path. Without the
+        // explicit `cache:`, refreshIfNeeded defaults to the real cache and
+        // the suite silently overwrites the user's installed catalog.
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("codexisland-catalog-test.json")
+        try? FileManager.default.removeItem(at: tmp)
+
         // A well-formed v1 payload is accepted and decoded.
         if case .payload(let p) = PricingCatalog.interpret(status: 200, data: json(valid)) {
             expect(p.models.count == 1, "valid payload decodes one model")
@@ -71,7 +78,9 @@ struct PricingCatalogTests {
         // in this file would still pass. The transport throws, so the store
         // is left exactly as it was.
         var firstRunRequests = 0
-        await PricingCatalog.refreshIfNeeded(now: Date(timeIntervalSince1970: 1_000_000)) { _ in
+        await PricingCatalog.refreshIfNeeded(
+            now: Date(timeIntervalSince1970: 1_000_000), cache: tmp
+        ) { _ in
             firstRunRequests += 1
             throw URLError(.notConnectedToInternet)
         }
@@ -116,7 +125,7 @@ struct PricingCatalogTests {
 
         PricingCatalog.install(models: [:], fetchedAt: Date(timeIntervalSince1970: 0))
         await PricingCatalog.refreshIfNeeded(
-            now: base, fetch: transport(200, json(valid), "\"abc\""))
+            now: base, cache: tmp, fetch: transport(200, json(valid), "\"abc\""))
         expect(PricingCatalog.rates(for: "claude-opus-4-8")?.inputPerMillion == 5,
                "200 installs the payload")
         expect(PricingCatalog.lastFetched == base, "200 records the fetch time")
@@ -124,12 +133,12 @@ struct PricingCatalogTests {
         // Within 24h the refresh is a no-op — no request at all.
         let before = seenHeaders.count
         await PricingCatalog.refreshIfNeeded(
-            now: base.addingTimeInterval(3_600), fetch: transport(200, Data(), nil))
+            now: base.addingTimeInterval(3_600), cache: tmp, fetch: transport(200, Data(), nil))
         expect(seenHeaders.count == before, "refresh inside 24h makes no request")
 
         // Past 24h it fetches again, now carrying the stored ETag.
         let later = base.addingTimeInterval(25 * 3_600)
-        await PricingCatalog.refreshIfNeeded(now: later, fetch: transport(304, Data(), nil))
+        await PricingCatalog.refreshIfNeeded(now: later, cache: tmp, fetch: transport(304, Data(), nil))
         expect(seenHeaders.last == "\"abc\"", "stored ETag is sent as If-None-Match")
         expect(PricingCatalog.lastFetched == later, "304 advances the fetch time")
         expect(PricingCatalog.rates(for: "claude-opus-4-8")?.inputPerMillion == 5,
@@ -137,13 +146,13 @@ struct PricingCatalogTests {
 
         // A garbage response must not disturb what is already installed.
         let later2 = later.addingTimeInterval(25 * 3_600)
-        await PricingCatalog.refreshIfNeeded(now: later2, fetch: transport(200, json("{nope"), nil))
+        await PricingCatalog.refreshIfNeeded(now: later2, cache: tmp, fetch: transport(200, json("{nope"), nil))
         expect(PricingCatalog.rates(for: "claude-opus-4-8")?.inputPerMillion == 5,
                "malformed payload leaves the catalog intact")
         expect(PricingCatalog.lastFetched == later, "rejected payload does not advance the clock")
 
         // A transport that throws is equally harmless.
-        await PricingCatalog.refreshIfNeeded(now: later2, fetch: { _ in
+        await PricingCatalog.refreshIfNeeded(now: later2, cache: tmp, fetch: { _ in
             throw URLError(.notConnectedToInternet)
         })
         expect(PricingCatalog.rates(for: "claude-opus-4-8")?.inputPerMillion == 5,
@@ -151,9 +160,6 @@ struct PricingCatalogTests {
 
         // Disk cache: the middle tier of the fallback ladder. Round-trips
         // through a temp file so the user's real cache is never touched.
-        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("codexisland-catalog-test.json")
-        try? FileManager.default.removeItem(at: tmp)
 
         guard case .payload(let diskPayload) =
             PricingCatalog.interpret(status: 200, data: json(valid)) else {
@@ -181,7 +187,9 @@ struct PricingCatalogTests {
         // the app can hold an ETag for a cache it no longer has, receive 304
         // for data it does not hold, and sit on the embedded seed forever.
         var diskHeaders: [String?] = []
-        await PricingCatalog.refreshIfNeeded(now: base.addingTimeInterval(60 * 86_400)) { req in
+        await PricingCatalog.refreshIfNeeded(
+            now: base.addingTimeInterval(60 * 86_400), cache: tmp
+        ) { req in
             diskHeaders.append(req.value(forHTTPHeaderField: "If-None-Match"))
             throw URLError(.cancelled)
         }
