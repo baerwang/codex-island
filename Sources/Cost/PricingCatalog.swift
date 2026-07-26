@@ -75,4 +75,109 @@ enum PricingCatalog {
         guard !payload.models.isEmpty else { return .rejected("empty catalog") }
         return .payload(payload)
     }
+
+    private static let refreshInterval: TimeInterval = 24 * 60 * 60
+
+    private static var etag: String?
+
+    private static var storedETag: String? {
+        get { lock.lock(); defer { lock.unlock() }; return etag }
+        set { lock.lock(); defer { lock.unlock() }; etag = newValue }
+    }
+
+    /// Records that the source was reached and confirmed unchanged, without
+    /// touching the price table.
+    static func markVerified(at stamp: Date) {
+        lock.lock()
+        defer { lock.unlock() }
+        fetchedAt = stamp
+    }
+
+    struct CachedCatalog: Codable {
+        let payload: CatalogPayload
+        let etag: String?
+        let fetchedAt: Date
+    }
+
+    /// `Caches` is purgeable by macOS. Losing this file costs one refetch and
+    /// drops to the embedded seed in the meantime, which is the intended
+    /// behavior — mirrors `LogParseCache.cacheURL`.
+    static func cacheURL() -> URL? {
+        let fm = FileManager.default
+        guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let dir = caches.appendingPathComponent("dev.codexisland.CodexIsland", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("model-prices.json")
+    }
+
+    /// The URL parameter exists so tests can round-trip through a temp file
+    /// instead of the user's real cache.
+    static func loadFromDisk(from url: URL? = cacheURL()) {
+        guard let url,
+              let data = try? Data(contentsOf: url),
+              let cached = try? JSONDecoder().decode(CachedCatalog.self, from: data),
+              cached.payload.schemaVersion == supportedSchemaVersion,
+              !cached.payload.models.isEmpty
+        else { return }
+        storedETag = cached.etag
+        install(models: cached.payload.models, fetchedAt: cached.fetchedAt)
+    }
+
+    static func persist(
+        _ payload: CatalogPayload, etag newETag: String?, at stamp: Date,
+        to url: URL? = cacheURL()
+    ) {
+        storedETag = newETag
+        guard let url,
+              let data = try? JSONEncoder().encode(
+                CachedCatalog(payload: payload, etag: newETag, fetchedAt: stamp))
+        else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    static func refreshIfNeeded(
+        now: Date = Date(),
+        fetch: (URLRequest) async throws -> (Data, URLResponse) = {
+            try await URLSession.shared.data(for: $0)
+        }
+    ) async {
+        if let last = lastFetched, now.timeIntervalSince(last) < refreshInterval { return }
+
+        var request = URLRequest(url: endpoint)
+        request.timeoutInterval = 15
+        if let tag = storedETag { request.setValue(tag, forHTTPHeaderField: "If-None-Match") }
+
+        guard let (data, response) = try? await fetch(request),
+              let http = response as? HTTPURLResponse
+        else { return }
+
+        switch interpret(status: http.statusCode, data: data) {
+        case .payload(let payload):
+            install(models: payload.models, fetchedAt: now)
+            persist(payload, etag: http.value(forHTTPHeaderField: "ETag"), at: now)
+        case .unchanged:
+            markVerified(at: now)
+        case .rejected:
+            // Deliberately silent and deliberately inert: staleness already
+            // surfaces in Settings, and the previous catalog stays correct.
+            break
+        }
+    }
+
+    @MainActor
+    private static var refreshTimer: Timer?
+
+    /// Ticks every 6h against a 24h staleness threshold, so a laptop that
+    /// slept through its window catches up at the next wake rather than
+    /// waiting another full day.
+    @MainActor
+    static func startAutoRefresh() {
+        Task { await refreshIfNeeded() }
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 6 * 60 * 60, repeats: true) { _ in
+            Task { await refreshIfNeeded() }
+        }
+    }
 }

@@ -24,6 +24,30 @@ struct PricingCatalogRaceTests {
                 flip.toggle()
             }
         }
+        DispatchQueue.global().async(group: group) {
+            while Date() < deadline {
+                PricingCatalog.markVerified(at: Date())
+            }
+        }
+        DispatchQueue.global().async(group: group) {
+            var flip = false
+            while Date() < deadline {
+                // to: nil writes no file — this exists only to touch the ETag,
+                // which nothing public reads, so the race it must expose is
+                // write-against-write between this thread and the next.
+                PricingCatalog.persist(
+                    CatalogPayload(schemaVersion: 1, generatedAt: "x", models: rates(1)),
+                    etag: flip ? "\"a\"" : "\"b\"", at: Date(), to: nil)
+                flip.toggle()
+            }
+        }
+        DispatchQueue.global().async(group: group) {
+            while Date() < deadline {
+                PricingCatalog.persist(
+                    CatalogPayload(schemaVersion: 1, generatedAt: "y", models: rates(2)),
+                    etag: "\"c\"", at: Date(), to: nil)
+            }
+        }
         for _ in 0..<4 {
             DispatchQueue.global().async(group: group) {
                 while Date() < deadline {
