@@ -351,6 +351,19 @@ git commit -m "feat(cost): add remote pricing catalog store and payload validati
 Insert into `Tests/PricingCatalogTests.swift`, immediately before the `exit(...)` line:
 
 ```swift
+        // Runs before anything installs, because `lastFetched` is nil only on
+        // a fresh process — and that is the branch a new install takes. A
+        // guard that bailed out when nothing had ever been fetched would mean
+        // the app never fetches a catalog at all, and every other assertion
+        // in this file would still pass. The transport throws, so the store
+        // is left exactly as it was.
+        var firstRunRequests = 0
+        await PricingCatalog.refreshIfNeeded(now: Date(timeIntervalSince1970: 1_000_000)) { _ in
+            firstRunRequests += 1
+            throw URLError(.notConnectedToInternet)
+        }
+        expect(firstRunRequests == 1, "a never-fetched catalog refreshes on first run")
+
         // Refresh: a 200 installs, and the transport sees no If-None-Match
         // until an ETag has been stored.
         let base = Date(timeIntervalSince1970: 1_790_000_000)
@@ -417,6 +430,13 @@ Insert into `Tests/PricingCatalogTests.swift`, immediately before the `exit(...)
         }
         PricingCatalog.persist(diskPayload, etag: "\"disk\"", at: base, to: tmp)
 
+        // Clobber the in-memory ETag without touching the file — `to: nil`
+        // writes nothing. Without this, `loadFromDisk` reassigning the same
+        // value it already holds is unobservable, and both halves of "the
+        // ETag lives with the payload on disk" could be deleted with a green
+        // suite.
+        PricingCatalog.persist(diskPayload, etag: "\"memory\"", at: base, to: nil)
+
         PricingCatalog.install(models: [:], fetchedAt: Date(timeIntervalSince1970: 0))
         expect(PricingCatalog.rates(for: "claude-opus-4-8") == nil, "store cleared before load")
 
@@ -424,6 +444,34 @@ Insert into `Tests/PricingCatalogTests.swift`, immediately before the `exit(...)
         expect(PricingCatalog.rates(for: "claude-opus-4-8")?.inputPerMillion == 5,
                "cached payload loads from disk")
         expect(PricingCatalog.lastFetched == base, "cached fetch time is restored")
+
+        // The ETag has to come back off disk with its payload. If it does not,
+        // the app can hold an ETag for a cache it no longer has, receive 304
+        // for data it does not hold, and sit on the embedded seed forever.
+        var diskHeaders: [String?] = []
+        await PricingCatalog.refreshIfNeeded(now: base.addingTimeInterval(60 * 86_400)) { req in
+            diskHeaders.append(req.value(forHTTPHeaderField: "If-None-Match"))
+            throw URLError(.cancelled)
+        }
+        expect(diskHeaders.last == "\"disk\"", "ETag restored from disk is sent as If-None-Match")
+
+        // A cache whose model map is empty must be ignored, not adopted —
+        // adopting it would price every model at $0.
+        PricingCatalog.persist(
+            CatalogPayload(schemaVersion: 1, generatedAt: "x", models: [:]),
+            etag: nil, at: base, to: tmp)
+        PricingCatalog.loadFromDisk(from: tmp)
+        expect(PricingCatalog.rates(for: "claude-opus-4-8")?.inputPerMillion == 5,
+               "empty-model cache is ignored, previous state survives")
+
+        // Same for a file that is not JSON at all.
+        try? Data("not json".utf8).write(to: tmp)
+        PricingCatalog.loadFromDisk(from: tmp)
+        expect(PricingCatalog.rates(for: "claude-opus-4-8")?.inputPerMillion == 5,
+               "corrupt cache file is ignored, previous state survives")
+
+        // Restore a good file for the assertions that follow.
+        PricingCatalog.persist(diskPayload, etag: "\"disk\"", at: base, to: tmp)
 
         // A cache written by a future schema is ignored rather than trusted.
         let futureSchema = CatalogPayload(
@@ -566,16 +614,64 @@ Append to `Sources/Cost/PricingCatalog.swift`, inside the `PricingCatalog` enum:
     }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [ ] **Step 4: Extend the race harness to the accessors this task added**
+
+`Tests/PricingCatalogRaceTests.swift` was written in Task 1 and its threads
+touch only Task 1's accessors. `storedETag` and `markVerified(at:)` are new
+shared state, and stripping their locks leaves the sanitizer silent — the
+regression net stops at the task boundary unless it is widened here.
+
+In the writer closure, replace the single `install` call with all three
+mutations so every accessor is exercised:
+
+```swift
+        DispatchQueue.global().async(group: group) {
+            var flip = false
+            while Date() < deadline {
+                PricingCatalog.install(models: rates(flip ? 1 : 9), fetchedAt: Date())
+                PricingCatalog.markVerified(at: Date())
+                // to: nil writes no file — this exists to touch the ETag.
+                PricingCatalog.persist(
+                    CatalogPayload(schemaVersion: 1, generatedAt: "x", models: rates(1)),
+                    etag: flip ? "\"a\"" : "\"b\"", at: Date(), to: nil)
+                flip.toggle()
+            }
+        }
+```
+
+and add a second writer, so the ETag has a competing writer rather than only
+a single one (nothing public reads it):
+
+```swift
+        DispatchQueue.global().async(group: group) {
+            while Date() < deadline {
+                PricingCatalog.persist(
+                    CatalogPayload(schemaVersion: 1, generatedAt: "y", models: rates(2)),
+                    etag: "\"c\"", at: Date(), to: nil)
+            }
+        }
+```
+
+- [ ] **Step 5: Run the tests, and prove the new coverage is load-bearing**
 
 Run: `./scripts/run-tests.sh`
 
-Expected: `pricing-catalog-tests` prints only PASS lines.
+Expected: all targets pass.
 
-- [ ] **Step 5: Commit**
+Then mutate each new lock individually and confirm the sanitizer now catches
+what it previously missed. Remove the lock from `storedETag`'s getter and
+setter, re-run, confirm TSan reports a race and the run exits non-zero.
+Restore. Repeat for `markVerified(at:)`. Report both, and report the same for
+the three assertions added in Step 1 — delete `storedETag = cached.etag` from
+`loadFromDisk`, delete the `etag:` argument from `persist`'s encoded envelope,
+and rewrite the 24h guard so a nil `lastFetched` returns early. Each must fail
+a named assertion. If any mutation leaves the suite green, say so plainly —
+that means the assertion does not pin what it claims.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add Sources/Cost/PricingCatalog.swift Tests/PricingCatalogTests.swift
+git add Sources/Cost/PricingCatalog.swift Tests/PricingCatalogTests.swift Tests/PricingCatalogRaceTests.swift
 git commit -m "feat(cost): add disk cache and daily conditional refresh for pricing catalog"
 ```
 
