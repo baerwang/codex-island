@@ -19,6 +19,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsShortcutMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before any window or store exists: the first cost scan must price
+        // against the cached catalog, not fall back to the seed and then
+        // silently change its numbers a moment later.
+        PricingCatalog.loadFromDisk()
+
         NSApp.setActivationPolicy(.accessory)
         island = IslandWindowController()
         island?.show()
@@ -41,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // of flashing "0%" while the first request lands.
         UsageStore.shared.startAutoRefresh()
         CostStore.shared.startAutoRefresh()
+        PricingCatalog.startAutoRefresh()
 
         // Wire the alert engine after the usage store so its initial
         // recompute sees whatever values the first refresh has produced.

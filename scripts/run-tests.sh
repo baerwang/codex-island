@@ -43,6 +43,7 @@ swiftc \
   -parse-as-library \
   -o "$OUT_DIR/pricing-tests" \
   Sources/Cost/TokenEvent.swift \
+  Sources/Cost/PricingCatalog.swift \
   Sources/Cost/Pricing.swift \
   Tests/PricingTests.swift
 
@@ -64,3 +65,23 @@ swiftc \
   Tests/PricingCatalogRaceTests.swift
 
 "$OUT_DIR/pricing-catalog-race-tests"
+
+swiftc \
+  -parse-as-library \
+  -o "$OUT_DIR/pricing-tests" \
+  Sources/Cost/TokenEvent.swift \
+  Sources/Cost/PricingCatalog.swift \
+  Sources/Cost/Pricing.swift \
+  Tests/PricingTests.swift
+
+"$OUT_DIR/pricing-tests"
+
+swiftc \
+  -parse-as-library \
+  -o "$OUT_DIR/pricing-precedence-tests" \
+  Sources/Cost/TokenEvent.swift \
+  Sources/Cost/PricingCatalog.swift \
+  Sources/Cost/Pricing.swift \
+  Tests/PricingPrecedenceTests.swift
+
+"$OUT_DIR/pricing-precedence-tests"

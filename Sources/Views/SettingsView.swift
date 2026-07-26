@@ -603,7 +603,7 @@ struct SettingsView: View {
     }()
 
     private func costSubtitle() -> String {
-        let days = Pricing.daysSinceSnapshot
+        let days = Pricing.daysSincePricingRefresh()
         let isStale = days > Self.pricingFreshnessThreshold
 
         if cost.loading {
