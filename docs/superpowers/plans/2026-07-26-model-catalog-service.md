@@ -1615,7 +1615,8 @@ Create `.dockerignore`:
 .git
 .superpowers
 README.md
-k8s/secret.yaml
+k8s/secret*.yaml
+!k8s/secret.example.yaml
 ```
 
 `k8s/` stays copyable — Step 3 adds an entrypoint script that lives there — but
@@ -1767,7 +1768,9 @@ spec:
   concurrencyPolicy: Forbid
   # Unset, the controller counts missed schedules from lastScheduleTime and
   # permanently stops scheduling past 100 — 25 days of Pi downtime at this
-  # interval, after which the CronJob silently never fires again.
+  # interval, after which the CronJob silently never fires again. The trade:
+  # a tick missed by more than an hour is now skipped rather than run late,
+  # which is right for a job that is idempotent and runs again in six hours.
   startingDeadlineSeconds: 3600
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -1778,6 +1781,12 @@ spec:
       # under Forbid. git has no default network timeout, so a stalled clone
       # waits on TCP keepalive — over two hours on Linux defaults.
       activeDeadlineSeconds: 900
+      # restartPolicy: Never retains a pod per failed attempt, and a retained
+      # pod keeps its container snapshot — including /tmp/repo/.git/config,
+      # which holds the PAT interpolated into the remote URL. A day is enough
+      # to debug four six-hourly runs; weeks of a credential at rest is not
+      # a trade worth making for logs nobody will read that late.
+      ttlSecondsAfterFinished: 86400
       template:
         spec:
           # Never, not OnFailure: OnFailure restarts in place and all three
@@ -1796,7 +1805,12 @@ spec:
                   memory: 32Mi
                 limits:
                   cpu: 500m
-                  memory: 128Mi
+                  # litellm.Fetch buffers up to 32 MiB and json.Unmarshal's it
+                  # with the raw bytes still live, so 128Mi would OOMKill
+                  # before the code's own ceiling ever tripped. Today's
+                  # upstream file is a few MB; this makes the guard in the
+                  # code the real limit rather than the manifest.
+                  memory: 256Mi
 ```
 
 `17 */6 * * *` rather than `0 */6 * * *` — an off-the-hour minute avoids piling onto the same upstream-fetch spike as every other cron on the internet.
@@ -1806,9 +1820,13 @@ spec:
 Create `.gitignore`:
 
 ```
-k8s/secret.yaml
+k8s/secret*.yaml
+!k8s/secret.example.yaml
 .superpowers/
 ```
+
+The glob rather than the exact name: `secret.example.yaml` tells you to copy it,
+and a maintainer who lands on `secret-prod.yaml` should still be covered.
 
 `.superpowers/` holds scratch review artifacts. It is untracked either way, but
 this repo is about to be public and `git add -A` should not be able to sweep it in.
