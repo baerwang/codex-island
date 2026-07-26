@@ -1984,10 +1984,12 @@ Then, from `~/Desktop/Projects/codex-island-infra`:
 cp k8s/secret.example.yaml k8s/secret.yaml
 ```
 
-Paste the token into that copy, then:
+Paste the token into that copy, then pipe it over stdin rather than copying it
+to the Pi — this way the token never lands on that filesystem at all, so there
+is no `rm` to forget:
 
 ```bash
-scp k8s/namespace.yaml k8s/secret.yaml ericpark@ericpark:/tmp/ && ssh ericpark@ericpark 'sudo k3s kubectl apply -f /tmp/namespace.yaml -f /tmp/secret.yaml && rm /tmp/secret.yaml'
+cat k8s/namespace.yaml | ssh ericpark@ericpark 'sudo k3s kubectl apply -f -' && cat k8s/secret.yaml | ssh ericpark@ericpark 'sudo k3s kubectl apply -f -'
 ```
 
 - [ ] **Step 7: Pin the image SHA and deploy the CronJob**
