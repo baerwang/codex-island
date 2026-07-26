@@ -522,6 +522,20 @@ func variantLabel(date string) string {
 	return date
 }
 
+// ValidateConfig rejects a malformed pattern up front. path.Match reports a
+// bad pattern only as an error return, so a typo in config.json would
+// otherwise make an entire provider's models vanish from the catalog with no
+// signal at all — and the run-level count check would be the only thing that
+// noticed.
+func ValidateConfig(cfg Config) error {
+	for _, p := range cfg.Patterns {
+		if _, err := path.Match(p, "validate"); err != nil {
+			return fmt.Errorf("config: bad pattern %q: %w", p, err)
+		}
+	}
+	return nil
+}
+
 func tracked(id string, e litellm.Entry, cfg Config) bool {
 	if id == "sample_spec" || strings.Contains(id, "/") {
 		return false
@@ -840,12 +854,36 @@ func TestGateFirstRunNeverAborts(t *testing.T) {
 	if got.Aborted {
 		t.Error("bootstrapping against an empty catalog must not abort")
 	}
+	// Without this, a gate that rejected every baseline-less model would
+	// still pass: the catalog would silently stop accepting new models.
+	if _, ok := got.Models["a"]; !ok {
+		t.Error("a valid brand-new model must be published")
+	}
 }
 
+func TestGateAbortKeepsPublishedRatherThanEmptying(t *testing.T) {
+	published := map[string]Rates{
+		"a": rate(1, 2), "b": rate(1, 2), "c": rate(1, 2), "d": rate(1, 2),
+	}
+	got := Gate(map[string]Rates{"a": rate(1, 2)}, published)
+	if !got.Aborted {
+		t.Fatal("expected abort")
+	}
+	if len(got.Models) != len(published) {
+		t.Errorf("abort returned %d models, want the published %d — an empty "+
+			"map would price everything at $0 for any caller that skips the "+
+			"Aborted check", len(got.Models), len(published))
+	}
+}
+
+// Zero baseline routes past the ratio rule, so the negative check is the
+// only rule that can reject this. Without it the test would pass even with
+// the negative check deleted.
 func TestGateRejectsNegativeRate(t *testing.T) {
-	published := map[string]Rates{"a": rate(1, 2)}
-	got := Gate(map[string]Rates{"a": rate(-1, 2)}, published)
-	if got.Models["a"].InputPerMillion != 1 {
+	published := map[string]Rates{"a": {InputPerMillion: 1, OutputPerMillion: 2, CacheReadPerMillion: 0}}
+	candidate := map[string]Rates{"a": {InputPerMillion: 1, OutputPerMillion: 2, CacheReadPerMillion: -0.1}}
+	got := Gate(candidate, published)
+	if got.Models["a"].CacheReadPerMillion != 0 {
 		t.Errorf("negative rate should keep the published value, got %v", got.Models["a"])
 	}
 	if len(got.Rejections) == 0 {
@@ -853,11 +891,43 @@ func TestGateRejectsNegativeRate(t *testing.T) {
 	}
 }
 
-func TestGateRejectsAbsurdInputRate(t *testing.T) {
+// The cap is checked before the ratio rule (it has to be — the ratio rule is
+// skipped for baseline-less models, and the cap must not be). So this pins
+// the baselined-above-cap path: rejected, but kept at its published value
+// rather than omitted. TestGateRejectsTenfoldJump covers the ratio rule.
+func TestGateRejectsAboveCapKeepsPublished(t *testing.T) {
 	published := map[string]Rates{"a": rate(5, 10)}
 	got := Gate(map[string]Rates{"a": rate(1001, 10)}, published)
 	if got.Models["a"].InputPerMillion != 5 {
-		t.Errorf("absurd rate should keep published value, got %v", got.Models["a"])
+		t.Errorf("above-cap rate should keep published value, got %v", got.Models["a"])
+	}
+}
+
+// The cap is the entire defense for a model with no baseline, so it is
+// tested there — and on a non-input field, since the ratio rule that covers
+// the other three is skipped in exactly this case.
+func TestGateOmitsAbsurdBrandNewModel(t *testing.T) {
+	got := Gate(map[string]Rates{
+		"a":       rate(1, 2),
+		"new":     {InputPerMillion: 5001, OutputPerMillion: 10, CacheCreationPerMillion: 5, CacheReadPerMillion: 0.5},
+		"newout":  {InputPerMillion: 5, OutputPerMillion: 1000000, CacheCreationPerMillion: 5, CacheReadPerMillion: 0.5},
+		"atlimit": {InputPerMillion: 1000, OutputPerMillion: 10, CacheCreationPerMillion: 5, CacheReadPerMillion: 0.5},
+	}, map[string]Rates{"a": rate(1, 2)})
+
+	if _, ok := got.Models["new"]; ok {
+		t.Error("brand-new model above the input cap must be omitted")
+	}
+	if _, ok := got.Models["newout"]; ok {
+		t.Error("brand-new model above the output cap must be omitted")
+	}
+	if _, ok := got.Models["atlimit"]; !ok {
+		t.Error("exactly at the cap must survive — the bound is exclusive")
+	}
+	if _, ok := got.Models["a"]; !ok {
+		t.Error("the valid model must survive; the gate rejected everything")
+	}
+	if len(got.Rejections) != 2 {
+		t.Errorf("want 2 rejections, got %v", got.Rejections)
 	}
 }
 
@@ -929,8 +999,8 @@ package catalog
 import "fmt"
 
 const (
-	maxInputPerMillion = 1000.0
-	maxRatioChange     = 10.0
+	maxPerMillion  = 1000.0
+	maxRatioChange = 10.0
 )
 
 type GateResult struct {
@@ -950,6 +1020,10 @@ func Gate(candidate, published map[string]Rates) GateResult {
 	res := GateResult{Models: make(map[string]Rates, len(candidate)+len(published))}
 
 	if n := len(published); n > 0 && len(candidate)*2 < n {
+		// Hand back what is already published, never an empty map: a caller
+		// that forgets to check Aborted must produce a no-op, not a catalog
+		// of zero models — which would price everything at $0 in the app.
+		res.Models = published
 		res.Aborted = true
 		res.AbortReason = fmt.Sprintf(
 			"model count collapsed: %d candidates against %d published", len(candidate), n)
@@ -991,6 +1065,13 @@ func check(next, prev Rates, hadPrev bool) string {
 		if f.next < 0 {
 			return fmt.Sprintf("%s is negative (%v)", f.name, f.next)
 		}
+		// The absolute ceiling applies to every rate, not just input. For a
+		// brand-new model the ratio rule below is skipped entirely, so this
+		// is the only bound that rule ever sees — and output tokens dominate
+		// the app's spend arithmetic.
+		if f.next > maxPerMillion {
+			return fmt.Sprintf("%s %v exceeds %v", f.name, f.next, maxPerMillion)
+		}
 		if !hadPrev || f.prev <= 0 {
 			// No baseline, or a rate legitimately moving off zero — the
 			// ratio test has nothing meaningful to say.
@@ -999,9 +1080,6 @@ func check(next, prev Rates, hadPrev bool) string {
 		if f.next >= f.prev*maxRatioChange || f.next*maxRatioChange <= f.prev {
 			return fmt.Sprintf("%s moved %v -> %v", f.name, f.prev, f.next)
 		}
-	}
-	if next.InputPerMillion > maxInputPerMillion {
-		return fmt.Sprintf("inputPerMillion %v exceeds %v", next.InputPerMillion, maxInputPerMillion)
 	}
 	return ""
 }
@@ -1208,6 +1286,9 @@ func run() error {
 	cfg, err := readJSON[catalog.Config](filepath.Join(repo, "config.json"))
 	if err != nil {
 		return fmt.Errorf("config.json: %w", err)
+	}
+	if err := catalog.ValidateConfig(cfg); err != nil {
+		return err
 	}
 	overrides, err := readJSON[map[string]catalog.Override](filepath.Join(repo, "overrides.json"))
 	if err != nil {
