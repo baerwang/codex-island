@@ -42,6 +42,11 @@
   - `enum CatalogFetchResult: Equatable` — `.payload(CatalogPayload)`, `.unchanged`, `.rejected(String)`
   - `enum PricingCatalog` with `static func interpret(status: Int, data: Data) -> CatalogFetchResult`, `static func install(models: [String: CatalogRates], fetchedAt: Date)`, `static func rates(for canonical: String) -> CatalogRates?`, `static var lastFetched: Date?`
 
+`etag` storage and `markVerified(at:)` belong to Task 2, which is what consumes
+them. Declaring them here would land untested dead code — and dead code inside
+the one file whose correctness argument is "every accessor takes the lock" is
+exactly where it should not sit.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `Tests/PricingCatalogTests.swift`:
@@ -203,7 +208,6 @@ enum PricingCatalog {
     private static let lock = NSLock()
     private static var models: [String: CatalogRates] = [:]
     private static var fetchedAt: Date?
-    private static var etag: String?
 
     static func rates(for canonical: String) -> CatalogRates? {
         lock.lock()
@@ -224,14 +228,6 @@ enum PricingCatalog {
         fetchedAt = stamp
     }
 
-    /// Records that the source was reached and confirmed unchanged, without
-    /// touching the price table.
-    static func markVerified(at stamp: Date) {
-        lock.lock()
-        defer { lock.unlock() }
-        fetchedAt = stamp
-    }
-
     /// Decides what a response means. Pure, so the whole trust boundary is
     /// testable without a network.
     static func interpret(status: Int, data: Data) -> CatalogFetchResult {
@@ -249,16 +245,86 @@ enum PricingCatalog {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [ ] **Step 4: Write the race test**
+
+The lock is the whole reason this store exists rather than a bare `static var`,
+and nothing above would notice if it vanished — every assertion so far runs on
+one thread. A value assertion cannot catch a data race; a sanitizer can.
+
+Create `Tests/PricingCatalogRaceTests.swift`:
+
+```swift
+import Foundation
+
+/// Hammers the store from several threads while a writer swaps the whole
+/// table. Built with `-sanitize=thread`: if the lock in `PricingCatalog` is
+/// removed, TSan reports the race on the backing dictionary and aborts, so
+/// this fails loudly rather than flaking.
+@main
+struct PricingCatalogRaceTests {
+    static func rates(_ input: Double) -> [String: CatalogRates] {
+        ["m": CatalogRates(
+            displayName: "M", inputPerMillion: input, outputPerMillion: input * 2,
+            cacheCreationPerMillion: input, cacheReadPerMillion: 0
+        )]
+    }
+
+    static func main() {
+        let deadline = Date().addingTimeInterval(2)
+        let group = DispatchGroup()
+
+        DispatchQueue.global().async(group: group) {
+            var flip = false
+            while Date() < deadline {
+                PricingCatalog.install(models: rates(flip ? 1 : 9), fetchedAt: Date())
+                flip.toggle()
+            }
+        }
+        for _ in 0..<4 {
+            DispatchQueue.global().async(group: group) {
+                while Date() < deadline {
+                    _ = PricingCatalog.rates(for: "m")
+                    _ = PricingCatalog.lastFetched
+                }
+            }
+        }
+
+        group.wait()
+        print("PASS concurrent install/read is race-free")
+        exit(0)
+    }
+}
+```
+
+Add the target to `scripts/run-tests.sh`:
+
+```bash
+swiftc \
+  -parse-as-library \
+  -sanitize=thread \
+  -o "$OUT_DIR/pricing-catalog-race-tests" \
+  Sources/Cost/PricingCatalog.swift \
+  Tests/PricingCatalogRaceTests.swift
+
+"$OUT_DIR/pricing-catalog-race-tests"
+```
+
+- [ ] **Step 5: Run the tests and prove the race test is load-bearing**
 
 Run: `./scripts/run-tests.sh`
 
-Expected: all existing targets still pass, and `pricing-catalog-tests` prints only PASS lines.
+Expected: all existing targets still pass, `pricing-catalog-tests` prints only
+PASS lines, and `pricing-catalog-race-tests` prints its single PASS.
 
-- [ ] **Step 5: Commit**
+Then verify the new test actually guards the lock: temporarily delete the four
+`lock.lock()` / `defer { lock.unlock() }` pairs in `PricingCatalog.swift`,
+re-run, and confirm TSan reports a data race and the run exits non-zero.
+Restore the lock and confirm green again. Report both outputs.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add Sources/Cost/PricingCatalog.swift Tests/PricingCatalogTests.swift scripts/run-tests.sh
+git add Sources/Cost/PricingCatalog.swift Tests/PricingCatalogTests.swift Tests/PricingCatalogRaceTests.swift scripts/run-tests.sh
 git commit -m "feat(cost): add remote pricing catalog store and payload validation"
 ```
 
@@ -396,9 +462,19 @@ Append to `Sources/Cost/PricingCatalog.swift`, inside the `PricingCatalog` enum:
 ```swift
     private static let refreshInterval: TimeInterval = 24 * 60 * 60
 
+    private static var etag: String?
+
     private static var storedETag: String? {
         get { lock.lock(); defer { lock.unlock() }; return etag }
         set { lock.lock(); defer { lock.unlock() }; etag = newValue }
+    }
+
+    /// Records that the source was reached and confirmed unchanged, without
+    /// touching the price table.
+    static func markVerified(at stamp: Date) {
+        lock.lock()
+        defer { lock.unlock() }
+        fetchedAt = stamp
     }
 
     struct CachedCatalog: Codable {
