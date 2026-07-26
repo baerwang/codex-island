@@ -73,7 +73,7 @@ overrides ┘    merge + sanity gate          (auditable)      (Fastly CDN)
 
 ## Payload
 
-`https://ericjypark.github.io/codex-island-model-list-api/v1/models.json`
+`https://ericjypark.github.io/codex-island-model-catalog/v1/models.json`
 
 ```json
 {
@@ -153,7 +153,7 @@ user within a day.
 
 ## Repository layout
 
-`ericjypark/codex-island-model-list-api` — **must be switched from private
+`ericjypark/codex-island-model-catalog` — **must be switched from private
 to public**; it is both the audit surface and the serving channel.
 
 ```
@@ -175,7 +175,7 @@ Namespace `codexisland` on the Pi's k3s.
 
 - **`CronJob model-list-sync`** — every 6h, `restartPolicy: OnFailure`,
   `backoffLimit: 2`, `concurrencyPolicy: Forbid`, image
-  `ghcr.io/ericjypark/codex-island-model-list-api:<sha>` — named after the
+  `ghcr.io/ericjypark/codex-island-model-catalog:<sha>` — named after the
   repo, matching the existing `ghcr.io/ericjypark/<name>:<sha>` convention
   on this cluster.
 - **`Secret codexisland-git`** — a fine-grained PAT with `contents: write`
@@ -276,7 +276,7 @@ analytics" both remain true and stay as-is.
 
 These are one-time, manual, and outside the code:
 
-1. Switch `codex-island-model-list-api` from private to public.
+1. Switch `codex-island-model-catalog` from private to public.
 2. Enable GitHub Pages on `main` / root.
 3. Mint the fine-grained PAT and apply it as `codexisland-git` in the
    `codexisland` namespace.
