@@ -1104,10 +1104,11 @@ git commit -m "feat: add sanity gate guarding published price changes"
 
 **Files:**
 - Create: `internal/catalog/encode.go`
+- Modify: `internal/catalog/overrides.go` (add `ValidateOverrides`)
 - Create: `cmd/sync/main.go`
 - Create: `v1/models.json`
 - Create: `.nojekyll`
-- Test: `internal/catalog/encode_test.go`
+- Test: `internal/catalog/encode_test.go`, `internal/catalog/overrides_test.go`
 
 **Interfaces:**
 - Consumes: everything from Tasks 1–4. The test below reuses the `rate(in, out float64) Rates` helper defined in `gate_test.go` (Task 4) — same package, so Task 4 must land first.
@@ -1203,6 +1204,73 @@ Run: `go test ./internal/catalog/ -run 'TestEncode|TestDecode|TestModelsEqual' -
 
 Expected: FAIL — `undefined: Encode`, `undefined: Decode`, `undefined: ModelsEqual`.
 
+- [ ] **Step 2b: Write the failing test for override validation**
+
+Because `cmd/sync` re-applies overrides *after* the gate, override values never
+pass through `check` — that is what makes them an escape hatch, and it also
+means nothing stands between a typo and the published catalog. Bounding their
+magnitude again would close the hatch, so only the unambiguous error is caught.
+
+Add to `internal/catalog/overrides_test.go`:
+
+```go
+func TestValidateOverrides(t *testing.T) {
+	ok := map[string]Override{
+		"a": {InputPerMillion: f(5), CacheReadPerMillion: f(0)},
+		// Deliberately far above the gate's cap: an override exists so a
+		// legitimately expensive model can exceed it.
+		"b": {OutputPerMillion: f(5000)},
+	}
+	if err := ValidateOverrides(ok); err != nil {
+		t.Errorf("valid overrides rejected: %v", err)
+	}
+
+	bad := map[string]Override{"c": {CacheReadPerMillion: f(-0.1)}}
+	err := ValidateOverrides(bad)
+	if err == nil {
+		t.Fatal("negative override should be rejected")
+	}
+	if !strings.Contains(err.Error(), "c") {
+		t.Errorf("error should name the offending model, got %v", err)
+	}
+}
+```
+
+- [ ] **Step 2c: Implement `ValidateOverrides`**
+
+Append to `internal/catalog/overrides.go`:
+
+```go
+// ValidateOverrides rejects values that cannot be anything but a typo.
+//
+// Magnitude is deliberately unbounded. An override's whole purpose is to let
+// a legitimately expensive model exceed the gate's absolute cap, and it is
+// applied after the gate for that reason — re-bounding it here would close
+// the escape hatch. Review of the public PR that changes overrides.json is
+// the control on magnitude. A negative rate, though, is never intentional.
+func ValidateOverrides(ov map[string]Override) error {
+	for id, o := range ov {
+		fields := []struct {
+			name string
+			val  *float64
+		}{
+			{"inputPerMillion", o.InputPerMillion},
+			{"outputPerMillion", o.OutputPerMillion},
+			{"cacheCreationPerMillion", o.CacheCreationPerMillion},
+			{"cacheReadPerMillion", o.CacheReadPerMillion},
+		}
+		for _, f := range fields {
+			if f.val != nil && *f.val < 0 {
+				return fmt.Errorf("overrides: %s: %s is negative (%v)", id, f.name, *f.val)
+			}
+		}
+	}
+	return nil
+}
+```
+
+`overrides.go` gains a `fmt` import.
+
 - [ ] **Step 3: Write the implementation**
 
 Create `internal/catalog/encode.go`:
@@ -1293,6 +1361,9 @@ func run() error {
 	overrides, err := readJSON[map[string]catalog.Override](filepath.Join(repo, "overrides.json"))
 	if err != nil {
 		return fmt.Errorf("overrides.json: %w", err)
+	}
+	if err := catalog.ValidateOverrides(overrides); err != nil {
+		return err
 	}
 
 	published := map[string]catalog.Rates{}
