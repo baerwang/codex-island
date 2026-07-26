@@ -335,6 +335,31 @@ func TestBuildFilters(t *testing.T) {
 	}
 }
 
+// The rates that expose the residue are the cheap ones — these three inputs
+// are exactly the values that produced 0.049999999999999996,
+// 0.39999999999999997 and 0.19999999999999998 in the first bootstrap.
+func TestBuildRoundsFloatResidue(t *testing.T) {
+	got, _ := Build(map[string]litellm.Entry{
+		"gpt-5.9-nano": {
+			Mode:                    "chat",
+			InputCostPerToken:       f(0.00000005),
+			OutputCostPerToken:      f(0.0000004),
+			CacheReadInputTokenCost: f(0.0000002),
+		},
+	}, testCfg)
+
+	r := got["gpt-5.9-nano"]
+	if r.InputPerMillion != 0.05 {
+		t.Errorf("input = %v, want exactly 0.05", r.InputPerMillion)
+	}
+	if r.OutputPerMillion != 0.4 {
+		t.Errorf("output = %v, want exactly 0.4", r.OutputPerMillion)
+	}
+	if r.CacheReadPerMillion != 0.2 {
+		t.Errorf("cacheRead = %v, want exactly 0.2", r.CacheReadPerMillion)
+	}
+}
+
 func TestBuildRequiresBothBaseRates(t *testing.T) {
 	got, _ := Build(map[string]litellm.Entry{
 		"gpt-5.9": {Mode: "chat", InputCostPerToken: f(0.000005)},
@@ -450,6 +475,7 @@ package catalog
 
 import (
 	"fmt"
+	"math"
 	"path"
 	"strings"
 
@@ -554,19 +580,29 @@ func tracked(id string, e litellm.Entry, cfg Config) bool {
 	return false
 }
 
+// perMillion converts a per-token price and rounds off the binary-float
+// residue the multiplication leaves behind: 2e-7 * 1e6 lands on
+// 0.19999999999999998, which would be published verbatim into a file whose
+// entire point is that a human can read a price and check it against the
+// vendor's page. Eight decimals is far finer than any real rate and coarse
+// enough to erase the artifact.
+func perMillion(perToken float64) float64 {
+	return math.Round(perToken*1e6*1e8) / 1e8
+}
+
 func convert(canonical string, e litellm.Entry) Rates {
-	input := *e.InputCostPerToken * 1e6
+	input := perMillion(*e.InputCostPerToken)
 	r := Rates{
 		DisplayName:             DisplayName(canonical),
 		InputPerMillion:         input,
-		OutputPerMillion:        *e.OutputCostPerToken * 1e6,
+		OutputPerMillion:        perMillion(*e.OutputCostPerToken),
 		CacheCreationPerMillion: input,
 	}
 	if e.CacheCreationInputTokenCost != nil {
-		r.CacheCreationPerMillion = *e.CacheCreationInputTokenCost * 1e6
+		r.CacheCreationPerMillion = perMillion(*e.CacheCreationInputTokenCost)
 	}
 	if e.CacheReadInputTokenCost != nil {
-		r.CacheReadPerMillion = *e.CacheReadInputTokenCost * 1e6
+		r.CacheReadPerMillion = perMillion(*e.CacheReadInputTokenCost)
 	}
 	return r
 }
