@@ -1329,8 +1329,18 @@ func run() error {
 		return fmt.Errorf("aborted: %s", gated.AbortReason)
 	}
 
-	if catalog.ModelsEqual(gated.Models, published) {
-		log.Printf("no change (%d models)", len(gated.Models))
+	// Overrides are re-asserted after the gate, and this is what makes them a
+	// real escape hatch. The gate exists to stop bad *upstream* data; an
+	// override is hand-written and reviewed in a public PR, so it is trusted
+	// input. Without this second pass, a legitimately expensive model that
+	// trips the absolute cap could not be corrected by hand — the gate would
+	// reject the correction too, and the model would price at $0 forever.
+	// They are also applied before the gate so the ratio rule compares like
+	// with like against the published values.
+	final := catalog.ApplyOverrides(gated.Models, overrides)
+
+	if catalog.ModelsEqual(final, published) {
+		log.Printf("no change (%d models)", len(final))
 		return nil
 	}
 
@@ -1338,7 +1348,7 @@ func run() error {
 		SchemaVersion: catalog.SchemaVersion,
 		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
 		Source:        "litellm + overrides",
-		Models:        gated.Models,
+		Models:        final,
 	})
 	if err != nil {
 		return err
@@ -1346,12 +1356,12 @@ func run() error {
 	if err := os.WriteFile(filepath.Join(repo, catalogPath), out, 0o644); err != nil {
 		return err
 	}
-	log.Printf("updated: %d models (was %d)", len(gated.Models), len(published))
+	log.Printf("updated: %d models (was %d)", len(final), len(published))
 
 	if os.Getenv("SKIP_COMMIT") != "" {
 		return nil
 	}
-	return commit(repo, len(gated.Models))
+	return commit(repo, len(final))
 }
 
 func readJSON[T any](path string) (T, error) {
