@@ -126,8 +126,13 @@ Go binary, run as a k3s CronJob every 6 hours.
 7. **Generate `displayName`** for models without an override, using the same
    rules as `Pricing.prettyModelName`.
 8. **Sanity gate** (see below).
-9. If the result differs from the committed `v1/models.json`, write it,
+9. If the `models` map differs from the committed `v1/models.json`, write it,
    commit, and push. Otherwise exit 0 without a commit.
+
+`generatedAt` therefore advances only when prices actually change — a run
+that confirms nothing changed produces no commit and no new timestamp. The
+comparison deliberately ignores `generatedAt` itself; comparing the whole
+file would make every run differ and commit 1,460 times a year.
 
 ### Sanity gate
 
@@ -217,20 +222,34 @@ Holds the resolved catalog and owns the fallback ladder.
   at build time" rather than the authority.
 - `cost(for:)`, `isKnown(_:)`, and `prettyModelName(_:)` consult the live
   catalog first, then fall back to `seedTable` and the existing name rules.
-- `snapshotDate` / `daysSinceSnapshot` are replaced by freshness derived
-  from the catalog's `generatedAt`.
+- `snapshotDate` → `seedSnapshotDate`, still the build-time constant, now
+  describing only the seed.
 
 **Call sites do not change.** The build uses plain `swiftc` with no
 `-swift-version 6` and no strict-concurrency flags (`build.sh:60`), so
-`Pricing` can keep its synchronous `static` API and swap an internal
-`static var` on the main actor. `CostSummary` and `StatCardSummary` are
-untouched.
+`Pricing` keeps its synchronous `static` API. `CostSummary` and
+`StatCardSummary` are untouched.
+
+The stored catalog is guarded by an `os_unfair_lock`, and that is not
+optional. `CostStore` runs `CostSummary.summarize` inside two concurrent
+`Task.detached` blocks (`CostStore.swift:67`, `CostStore.swift:77`), so
+`cost(for:)` is already read from background threads — installing a new
+catalog from the refresh would otherwise be a live data race. An
+uncontended lock costs tens of nanoseconds per event, which is noise next
+to the JSONL parsing that produced those events.
 
 ### `Sources/Views/SettingsView.swift`
 
 `costSubtitle()` keeps its "pricing data %dd old" strings and the 60-day
-threshold; the number now means "days since the catalog was generated"
-instead of "days since a hardcoded constant". No new localization keys.
+threshold. The number becomes **days since the last successful fetch**
+(200 or 304), falling back to days since `seedSnapshotDate` when no fetch
+has ever succeeded. No new localization keys.
+
+It deliberately is *not* days since `generatedAt`. Because the bot commits
+only on change, a long-stable price table would otherwise trigger a false
+"90d old" warning while the app was in fact checking daily and finding
+nothing new. "How long since I reached the source" is the signal that
+actually indicates the user's numbers might be wrong.
 
 ### `README.md`
 
