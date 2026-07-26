@@ -341,10 +341,11 @@ func TestBuildFilters(t *testing.T) {
 func TestBuildRoundsFloatResidue(t *testing.T) {
 	got, _ := Build(map[string]litellm.Entry{
 		"gpt-5.9-nano": {
-			Mode:                    "chat",
-			InputCostPerToken:       f(0.00000005),
-			OutputCostPerToken:      f(0.0000004),
-			CacheReadInputTokenCost: f(0.0000002),
+			Mode:                        "chat",
+			InputCostPerToken:           f(0.00000005),
+			OutputCostPerToken:          f(0.0000004),
+			CacheCreationInputTokenCost: f(0.0000004),
+			CacheReadInputTokenCost:     f(0.0000002),
 		},
 	}, testCfg)
 
@@ -354,6 +355,12 @@ func TestBuildRoundsFloatResidue(t *testing.T) {
 	}
 	if r.OutputPerMillion != 0.4 {
 		t.Errorf("output = %v, want exactly 0.4", r.OutputPerMillion)
+	}
+	// Set explicitly, so this covers the assignment inside the
+	// CacheCreationInputTokenCost branch rather than the "= input" fallback.
+	// That branch is live for every Anthropic model in the catalog.
+	if r.CacheCreationPerMillion != 0.4 {
+		t.Errorf("cacheCreation = %v, want exactly 0.4", r.CacheCreationPerMillion)
 	}
 	if r.CacheReadPerMillion != 0.2 {
 		t.Errorf("cacheRead = %v, want exactly 0.2", r.CacheReadPerMillion)
@@ -1362,7 +1369,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -1403,12 +1412,23 @@ func run() error {
 	}
 
 	published := map[string]catalog.Rates{}
-	if raw, err := os.ReadFile(filepath.Join(repo, catalogPath)); err == nil {
-		prev, err := catalog.Decode(raw)
-		if err != nil {
-			return fmt.Errorf("%s: %w", catalogPath, err)
+	raw, err := os.ReadFile(filepath.Join(repo, catalogPath))
+	switch {
+	case err == nil:
+		prev, decErr := catalog.Decode(raw)
+		if decErr != nil {
+			return fmt.Errorf("%s: %w", catalogPath, decErr)
 		}
 		published = prev.Models
+	case errors.Is(err, fs.ErrNotExist):
+		// Genuine first run — an empty `published` is correct here.
+	default:
+		// Every other read error must stop the run. An empty `published`
+		// silently disables the collapse abort (gated on len > 0), the ratio
+		// rule (every model looks brand new), and the carry-forward loop that
+		// implements "never remove a model" — so one transient I/O fault
+		// would let a single upstream response overwrite the catalog whole.
+		return fmt.Errorf("%s: %w", catalogPath, err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -1482,11 +1502,18 @@ func readJSON[T any](path string) (T, error) {
 }
 
 func commit(repo string, count int) error {
+	// Identity travels per-invocation rather than through `git config`, which
+	// writes at local scope and would permanently rewrite the bot identity
+	// into whatever clone this runs in — including a maintainer's during
+	// local iteration.
+	ident := []string{
+		"-c", "user.email=bot@codexisland.dev",
+		"-c", "user.name=codexisland-catalog-bot",
+	}
 	steps := [][]string{
-		{"config", "user.email", "bot@codexisland.dev"},
-		{"config", "user.name", "codexisland-catalog-bot"},
 		{"add", catalogPath},
-		{"commit", "-m", fmt.Sprintf("chore: refresh model catalog (%d models)", count)},
+		append(append([]string{}, ident...),
+			"commit", "-m", fmt.Sprintf("chore: refresh model catalog (%d models)", count)),
 		{"push"},
 	}
 	for _, args := range steps {
