@@ -47,3 +47,20 @@ swiftc \
   Tests/PricingTests.swift
 
 "$OUT_DIR/pricing-tests"
+
+swiftc \
+  -parse-as-library \
+  -o "$OUT_DIR/pricing-catalog-tests" \
+  Sources/Cost/PricingCatalog.swift \
+  Tests/PricingCatalogTests.swift
+
+"$OUT_DIR/pricing-catalog-tests"
+
+swiftc \
+  -parse-as-library \
+  -sanitize=thread \
+  -o "$OUT_DIR/pricing-catalog-race-tests" \
+  Sources/Cost/PricingCatalog.swift \
+  Tests/PricingCatalogRaceTests.swift
+
+"$OUT_DIR/pricing-catalog-race-tests"
