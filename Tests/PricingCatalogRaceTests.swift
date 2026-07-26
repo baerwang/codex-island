@@ -5,16 +5,28 @@ import Foundation
 /// happens-before edges, TSan reports the race and aborts, so this fails
 /// loudly rather than flaking.
 ///
-/// One accessor per thread is load-bearing, not style. With a single thread
-/// calling several accessors in sequence, the locks on either side of an
-/// unlocked one cover it and the sanitizer stays silent.
+/// One accessor per writer thread is load-bearing, not style. With a single
+/// thread calling several accessors in sequence, the locks on either side of
+/// an unlocked one cover it and the sanitizer stays silent.
 ///
-/// Known gap: `markVerified(at:)` is NOT covered. Removing its lock is not
-/// detected, across two harness designs and ten runs. The likely cause is
-/// shadow-memory eviction — `install` also writes `fetchedAt`, at high
-/// frequency and under the lock, and TSan keeps only four shadow cells per
-/// eight-byte granule. `install`, `rates(for:)` and `storedETag` are all
-/// verified to fail when their locks are removed.
+/// **What this harness does and does not protect.** Verified by removing each
+/// lock in turn: `install`, `rates(for:)` and `storedETag` all abort with a
+/// TSan report. `markVerified(at:)` and `lastFetched` do not — removing their
+/// locks is not detected at all.
+///
+/// The boundary is the field's storage kind, not this harness's shape. On this
+/// toolchain TSan reports races on heap-backed refcounted storage — `models`
+/// (Dictionary) and `etag` (String) — and not on inline POD storage. A
+/// standalone probe racing a `static var Date?` with no lock anywhere in the
+/// program reports nothing; the same probe on `[String: Double]` or `String?`
+/// aborts. Both uncovered accessors are exactly the two whose only shared
+/// state is `fetchedAt: Date?`.
+///
+/// So this is not a gap a further redesign closes — it is undetectable by
+/// construction for that field type. The consequence for anyone extending
+/// `PricingCatalog`: a new lock-guarded `Int`, `Date`, or other POD field will
+/// NOT be covered here, and its lock has to be argued for by reading rather
+/// than proven by this test.
 @main
 struct PricingCatalogRaceTests {
     static func rates(_ input: Double) -> [String: CatalogRates] {
@@ -59,10 +71,16 @@ struct PricingCatalogRaceTests {
                     etag: "\"c\"", at: Date(), to: nil)
             }
         }
-        for _ in 0..<4 {
+        for _ in 0..<2 {
             DispatchQueue.global().async(group: group) {
                 while Date() < deadline {
                     _ = PricingCatalog.rates(for: "m")
+                }
+            }
+        }
+        for _ in 0..<2 {
+            DispatchQueue.global().async(group: group) {
+                while Date() < deadline {
                     _ = PricingCatalog.lastFetched
                 }
             }

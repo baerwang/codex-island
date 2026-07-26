@@ -202,9 +202,6 @@ struct PricingCatalogTests {
         expect(PricingCatalog.rates(for: "claude-opus-4-8")?.inputPerMillion == 5,
                "corrupt cache file is ignored, previous state survives")
 
-        // Restore a good file for the assertions that follow.
-        PricingCatalog.persist(diskPayload, etag: "\"disk\"", at: base, to: tmp)
-
         // A cache written by a future schema is ignored rather than trusted.
         let futureSchema = CatalogPayload(
             schemaVersion: 2, generatedAt: "x",

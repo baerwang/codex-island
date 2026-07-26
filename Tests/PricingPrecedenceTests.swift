@@ -17,7 +17,7 @@ struct PricingPrecedenceTests {
         TokenEvent(
             provider: .claude, timestamp: now, model: model,
             inputTokens: input, outputTokens: 0,
-            cacheCreationTokens: 0, cacheReadTokens: 0, project: nil
+            cacheCreationTokens: 0, cacheReadTokens: 0
         )
     }
 
