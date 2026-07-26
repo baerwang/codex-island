@@ -1613,10 +1613,17 @@ Create `.dockerignore`:
 
 ```
 .git
+.superpowers
 README.md
+k8s/secret.yaml
 ```
 
-`k8s/` stays copyable — Step 3 adds an entrypoint script that lives there.
+`k8s/` stays copyable — Step 3 adds an entrypoint script that lives there — but
+`k8s/secret.yaml` must not be. `Dockerfile`'s `COPY . .` would otherwise sweep
+the live PAT the repo instructs you to create there into the build-stage layer
+and the local BuildKit cache. It never reaches CI (the file is gitignored, so a
+CI checkout has no copy) or the published image (the final stage copies only
+the binary), but a credential in a build cache is still a credential at rest.
 
 - [ ] **Step 2: Build the image locally to verify it compiles**
 
@@ -1631,8 +1638,7 @@ The CronJob starts from an empty filesystem, so it must clone first. Create `k8s
 Append to `Dockerfile` before the `ENTRYPOINT` line:
 
 ```dockerfile
-COPY k8s/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY --chmod=0755 k8s/entrypoint.sh /usr/local/bin/entrypoint.sh
 ```
 
 and change the last line to:
@@ -1678,6 +1684,11 @@ on:
   push:
     branches: [main]
   pull_request:
+
+# The default is whatever the repo is configured for, which on a public repo
+# may be write-all. The image job widens this for itself; nothing else needs to.
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -1754,14 +1765,25 @@ metadata:
 spec:
   schedule: "17 */6 * * *"
   concurrencyPolicy: Forbid
+  # Unset, the controller counts missed schedules from lastScheduleTime and
+  # permanently stops scheduling past 100 — 25 days of Pi downtime at this
+  # interval, after which the CronJob silently never fires again.
+  startingDeadlineSeconds: 3600
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
       backoffLimit: 2
+      # A run that hangs rather than fails would block every later run forever
+      # under Forbid. git has no default network timeout, so a stalled clone
+      # waits on TCP keepalive — over two hours on Linux defaults.
+      activeDeadlineSeconds: 900
       template:
         spec:
-          restartPolicy: OnFailure
+          # Never, not OnFailure: OnFailure restarts in place and all three
+          # attempts share one container-log slot, so the first two are lost.
+          # This job is unattended and logs are its only failure signal.
+          restartPolicy: Never
           containers:
             - name: sync
               image: ghcr.io/ericjypark/codex-island-model-catalog:REPLACE_WITH_SHA
@@ -1785,7 +1807,11 @@ Create `.gitignore`:
 
 ```
 k8s/secret.yaml
+.superpowers/
 ```
+
+`.superpowers/` holds scratch review artifacts. It is untracked either way, but
+this repo is about to be public and `git add -A` should not be able to sweep it in.
 
 - [ ] **Step 8: Write the README**
 
