@@ -202,6 +202,25 @@ struct PricingCatalogTests {
         expect(PricingCatalog.rates(for: "claude-opus-4-8")?.inputPerMillion == 5,
                "corrupt cache file is ignored, previous state survives")
 
+        // A 304 must carry its timestamp to disk, not just to memory. Without
+        // that, a restart restores the older stamp — and since a stable
+        // catalog answers almost every refresh with 304, the staleness figure
+        // would climb for a user whose prices are simply not changing.
+        PricingCatalog.persist(diskPayload, etag: "\"disk\"", at: base, to: tmp)
+        PricingCatalog.loadFromDisk(from: tmp)
+        let verified = base.addingTimeInterval(90 * 86_400)
+        await PricingCatalog.refreshIfNeeded(now: verified, cache: tmp) { _ in
+            (Data(), HTTPURLResponse(
+                url: PricingCatalog.endpoint, statusCode: 304,
+                httpVersion: nil, headerFields: [:])!)
+        }
+        PricingCatalog.install(models: [:], fetchedAt: Date(timeIntervalSince1970: 0))
+        PricingCatalog.loadFromDisk(from: tmp)
+        expect(PricingCatalog.lastFetched == verified,
+               "304 timestamp survives a reload from disk")
+        expect(PricingCatalog.rates(for: "claude-opus-4-8")?.inputPerMillion == 5,
+               "304 leaves the cached payload alone")
+
         // A cache written by a future schema is ignored rather than trusted.
         let futureSchema = CatalogPayload(
             schemaVersion: 2, generatedAt: "x",

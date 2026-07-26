@@ -143,8 +143,11 @@ user within a day.
 - **Run-level:** if the merged model count is below 50% of the currently
   published count, reject the entire run — no commit, non-zero exit so the
   CronJob surfaces as failed.
-- **Model-level:** a rate that is negative, or an `inputPerMillion` above
-  1000, is rejected for that model.
+- **Model-level:** a rate that is negative, or **any** of the four rates above
+  1000, is rejected for that model. The ceiling covers every field because the
+  ratio rule below is skipped entirely for a model with no published baseline —
+  so for a brand-new model this is the only bound that applies, and output
+  tokens dominate the app's spend arithmetic.
 - **Model-level:** a rate that moved by ≥10× from the published value is
   rejected for that model. The rule applies only when the published value
   is greater than zero — a rate legitimately moving off 0 (a model gaining

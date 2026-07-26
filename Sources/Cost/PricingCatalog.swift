@@ -137,8 +137,24 @@ enum PricingCatalog {
         try? data.write(to: url, options: .atomic)
     }
 
+    /// A 304 means the source was reached and the payload is still current, so
+    /// the timestamp has to reach disk too — `markVerified` only moves the
+    /// in-memory copy. Without this, every launch restores the older stamp, and
+    /// since a stable catalog answers almost every refresh with 304, the
+    /// staleness figure in Settings would climb past its threshold for a user
+    /// whose prices simply are not changing. That false alarm is the exact
+    /// thing `daysSincePricingRefresh` exists to avoid.
+    static func touchCache(at stamp: Date, to url: URL? = cacheURL()) {
+        guard let url,
+              let data = try? Data(contentsOf: url),
+              let cached = try? JSONDecoder().decode(CachedCatalog.self, from: data)
+        else { return }
+        persist(cached.payload, etag: cached.etag, at: stamp, to: url)
+    }
+
     static func refreshIfNeeded(
         now: Date = Date(),
+        cache: URL? = cacheURL(),
         fetch: (URLRequest) async throws -> (Data, URLResponse) = {
             try await URLSession.shared.data(for: $0)
         }
@@ -156,9 +172,10 @@ enum PricingCatalog {
         switch interpret(status: http.statusCode, data: data) {
         case .payload(let payload):
             install(models: payload.models, fetchedAt: now)
-            persist(payload, etag: http.value(forHTTPHeaderField: "ETag"), at: now)
+            persist(payload, etag: http.value(forHTTPHeaderField: "ETag"), at: now, to: cache)
         case .unchanged:
             markVerified(at: now)
+            touchCache(at: now, to: cache)
         case .rejected:
             // Deliberately silent and deliberately inert: staleness already
             // surfaces in Settings, and the previous catalog stays correct.
