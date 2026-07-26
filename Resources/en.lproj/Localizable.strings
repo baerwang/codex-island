@@ -5,6 +5,7 @@
 "%@ tab" = "%@ tab";
 "%@, %@" = "%@, %@";
 "%@, %d%%" = "%@, %d%%";
+"%@, no reading" = "%@, no reading";
 "%@, all tokens. Total %@, Claude %@, Codex %@." = "%@, all tokens. Total %@, Claude %@, Codex %@.";
 "%@: %@ tokens" = "%@: %@ tokens";
 "%@: %@, %@" = "%@: %@, %@";

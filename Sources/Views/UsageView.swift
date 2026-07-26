@@ -202,18 +202,29 @@ struct ChartTile: View {
     private static let tileHeight: CGFloat = 96
 
     var body: some View {
-        let value = window.displayedFraction(mode: usageDisplay.mode) * 100   // 0-100
+        // A window with no reading carries `usedPercent: 0` as a struct
+        // default, not a measurement. Feeding that to a chart draws a
+        // confident "0% used" — or a full 100% ring under the `remaining`
+        // toggle — for a window we know nothing about. Gate on `hasReading`
+        // and hand the tile to NoReadingChart instead.
+        let value: Double? = window.hasReading
+            ? window.displayedFraction(mode: usageDisplay.mode) * 100   // 0-100
+            : nil
         let sub = subCaption()
         let label = L10n.tr(labelKey)
 
         Group {
-            switch style {
-            case .ring:    RingChart(value: value, color: color, label: label, sub: sub)
-            case .bar:     BarChart(value: value, color: color, label: label, sub: sub)
-            case .stepped: SteppedChart(value: value, color: color, label: label, sub: sub)
-            case .numeric: NumericChart(value: value, color: color, label: label, sub: compactSubCaption())
-            case .spark:   SparkChart(value: value, color: color, label: label, sub: sub,
-                                      seed: seed, history: historyPoints())
+            if let value {
+                switch style {
+                case .ring:    RingChart(value: value, color: color, label: label, sub: sub)
+                case .bar:     BarChart(value: value, color: color, label: label, sub: sub)
+                case .stepped: SteppedChart(value: value, color: color, label: label, sub: sub)
+                case .numeric: NumericChart(value: value, color: color, label: label, sub: compactSubCaption())
+                case .spark:   SparkChart(value: value, color: color, label: label, sub: sub,
+                                          seed: seed, history: historyPoints())
+                }
+            } else {
+                NoReadingChart(label: label, sub: sub)
             }
         }
         .id(style)
@@ -224,7 +235,10 @@ struct ChartTile: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .frame(height: Self.tileHeight)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(L10n.tr("%@, %d%%", label, Int(value)))
+        .accessibilityLabel(
+            value.map { L10n.tr("%@, %d%%", label, Int($0)) }
+                ?? L10n.tr("%@, no reading", label)
+        )
         .accessibilityValue(subCaption())
     }
 

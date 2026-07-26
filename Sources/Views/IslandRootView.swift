@@ -573,7 +573,7 @@ private struct PeekPillOverlay: View {
     }
 
     private func peekLabel(for window: WindowUsage, provider: String) -> String {
-        if window.error != nil && window.usedPercent == 0 {
+        if !window.hasReading {
             return L10n.tr("%@: no data for 5-hour window", provider)
         }
         let mode = UsageDisplayModeStore.shared.mode

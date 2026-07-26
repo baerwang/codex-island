@@ -225,9 +225,7 @@ enum AlertDecision {
         for input in inputs {
             guard input.visible else { continue }
             // Treat error-only states (no value, error set) as "no signal".
-            if input.window.error != nil && input.window.usedPercent == 0 {
-                continue
-            }
+            if !input.window.hasReading { continue }
             let pct = input.window.percentInt
             if pct >= critical {
                 out[input.provider] = .critical
@@ -280,9 +278,7 @@ enum AlertDecision {
         for input in inputs {
             guard input.visible else { continue }
             guard let resetAt = input.window.resetAt else { continue }
-            if input.window.error != nil && input.window.usedPercent == 0 {
-                continue
-            }
+            if !input.window.hasReading { continue }
             let pct = input.window.percentInt
 
             for threshold in [AlertEngine.Threshold.warning, AlertEngine.Threshold.critical] {

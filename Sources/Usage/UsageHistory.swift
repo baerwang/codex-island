@@ -8,11 +8,6 @@ struct UsageSample: Codable {
     let used: Double
 }
 
-enum UsageWindow: String, Codable {
-    case fiveHour
-    case weekly
-}
-
 /// Records the usage percentages the app already polls so the SparkChart can
 /// plot the user's real trajectory instead of a synthesized curve. Neither
 /// provider exposes a usage time-series, but we sample one ourselves on every
@@ -60,6 +55,20 @@ final class UsageHistoryStore: ObservableObject {
     /// recent successful poll.
     func samples(provider: AlertEngine.Provider, window: UsageWindow) -> [UsageSample] {
         series[key(provider, window)] ?? []
+    }
+
+    /// Newest recorded reading for a series, or nil when there is none or the
+    /// newest one predates `window.span`. History survives relaunch, so this
+    /// is what lets a cold start that lands on a failing endpoint show the
+    /// user's last real number instead of a blank tile. The age bound matters:
+    /// a 5-hour reading from six hours ago describes a window that has since
+    /// reset, and showing it would be a confident lie rather than stale truth.
+    func latestReading(
+        provider: AlertEngine.Provider, window: UsageWindow, now: Date = Date()
+    ) -> UsageSample? {
+        guard let newest = series[key(provider, window)]?.last else { return nil }
+        guard now.timeIntervalSince(newest.at) <= window.span else { return nil }
+        return newest
     }
 
     private func append(

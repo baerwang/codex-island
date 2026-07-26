@@ -5,6 +5,7 @@
 "%@ tab" = "%@标签";
 "%@, %@" = "%@，%@";
 "%@, %d%%" = "%@，%d%%";
+"%@, no reading" = "%@，无数据";
 "%@, all tokens. Total %@, Claude %@, Codex %@." = "%@，全部 token。总计 %@，Claude %@，Codex %@。";
 "%@: %@ tokens" = "%@：%@ 个 token";
 "%@: %@, %@" = "%@：%@，%@";

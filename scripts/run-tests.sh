@@ -32,6 +32,15 @@ swiftc \
 
 swiftc \
   -parse-as-library \
+  -o "$OUT_DIR/usage-merge-tests" \
+  Sources/Model/UsageDisplayModeStore.swift \
+  Sources/Usage/AppUsage.swift \
+  Tests/UsageMergeTests.swift
+
+"$OUT_DIR/usage-merge-tests"
+
+swiftc \
+  -parse-as-library \
   -o "$OUT_DIR/pricing-tests" \
   Sources/Cost/TokenEvent.swift \
   Sources/Cost/Pricing.swift \

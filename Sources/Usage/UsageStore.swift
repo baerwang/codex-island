@@ -121,16 +121,15 @@ final class UsageStore: ObservableObject {
                 return
             }
 
-            // Don't clobber existing good values when a fetch returns an
-            // all-error result. A transient 429 shouldn't blank the panel
-            // back to "0%" — that's worse than slightly stale data. But if
-            // the existing value is itself error-only (cold start sitting
-            // on `.empty`, or a series of failures), let the new error
-            // through — otherwise a single bad first fetch sticks "no data"
-            // permanently even after the network recovers.
-            if !UsageStore.isErrorOnly(c) || UsageStore.isErrorOnly(self.codex) {
-                self.codex = c
-            }
+            let now = Date()
+
+            // A failed poll must neither blank the panel nor hide the
+            // failure. `merge` keeps each window's last real reading and
+            // attaches the new error to it, so the tile shows a true number
+            // captioned with what went wrong. A window with nothing to carry
+            // stays at `hasReading == false`, which the UI renders as "—"
+            // instead of the fabricated 0% it used to show.
+            self.codex = AppUsage.merged(fetched: c, retaining: self.codex, at: now)
             if let cl {
                 if UsageStore.isRateLimited(cl) {
                     self.claudeCooldownUntil = Date().addingTimeInterval(UsageStore.rateLimitCooldown)
@@ -139,14 +138,13 @@ final class UsageStore: ObservableObject {
                     self.claudeCooldownUntil = nil
                 }
                 // A terminal auth failure (expired token / missing scope)
-                // REPLACES a stale good value — otherwise the panel freezes on
-                // numbers we can no longer refresh with no signal to the user.
-                // Transient errors (429/network) still fall through to the
-                // retention rule above.
-                if !UsageStore.isErrorOnly(cl) || UsageStore.isErrorOnly(self.claude)
-                    || ClaudeCredentials.isTerminalAuthFailure(cl) {
-                    self.claude = cl
-                }
+                // REPLACES the retained reading rather than carrying it: the
+                // token can never refresh those numbers again, and
+                // `ChartsBlock` keys the re-auth prompt off the error-only
+                // shape. Transient errors (429/network) still carry forward.
+                self.claude = ClaudeCredentials.isTerminalAuthFailure(cl)
+                    ? cl
+                    : AppUsage.merged(fetched: cl, retaining: self.claude, at: now)
             }
             if let codexResetCredits {
                 self.codexResetCredits = codexResetCredits
@@ -155,7 +153,6 @@ final class UsageStore: ObservableObject {
             // Record this poll's readings so the SparkChart can plot real
             // history. `record` keeps only non-errored windows, so a failed
             // or rate-limited fetch leaves a gap instead of a flat fake line.
-            let now = Date()
             UsageHistoryStore.shared.record(provider: .codex, usage: c, at: now)
             if let cl { UsageHistoryStore.shared.record(provider: .claude, usage: cl, at: now) }
             self.lastUpdated = now
@@ -163,12 +160,36 @@ final class UsageStore: ObservableObject {
         }
     }
 
-    /// True when both windows have errors and zero values — nothing useful
-    /// to show, so we keep whatever we had before.
-    private static func isErrorOnly(_ u: AppUsage) -> Bool {
-        u.fiveHour.error != nil && u.weekly.error != nil
-            && u.fiveHour.usedPercent == 0 && u.weekly.usedPercent == 0
+    /// Prime the panel from persisted history before the first fetch lands.
+    ///
+    /// `UsageHistoryStore` survives relaunch, so a cold start that hits a
+    /// failing endpoint can still show the user's last real numbers. This is
+    /// what makes the sticky `/api/oauth/usage` 429 survivable: that penalty
+    /// outlives an app restart (anthropics/claude-code#30930), so without a
+    /// seed the first failed fetch has nothing to carry and every tile falls
+    /// to "—" for the whole cooldown.
+    private func seedFromHistory() {
+        claude = UsageStore.seeded(claude, provider: .claude)
+        codex = UsageStore.seeded(codex, provider: .codex)
     }
+
+    private static func seeded(_ current: AppUsage, provider: AlertEngine.Provider) -> AppUsage {
+        func fill(_ kind: UsageWindow, _ existing: WindowUsage) -> WindowUsage {
+            guard !existing.hasReading,
+                  let sample = UsageHistoryStore.shared.latestReading(
+                      provider: provider, window: kind)
+            else { return existing }
+            // No resetAt: the sample never carried one, and inventing a
+            // countdown from a stored percentage would be a second fiction.
+            return WindowUsage(usedPercent: sample.used, resetAt: nil, error: existing.error)
+        }
+        return AppUsage(
+            fiveHour: fill(.fiveHour, current.fiveHour),
+            weekly: fill(.weekly, current.weekly),
+            plan: current.plan
+        )
+    }
+
 
     /// True when the fetch resolved to the rate-limited error (both windows
     /// carry the same message — see `UsageFetcher.errorPair`).
@@ -276,6 +297,7 @@ final class UsageStore: ObservableObject {
 
     func startAutoRefresh() {
         stopAutoRefresh()
+        seedFromHistory()
         refresh()
         armTimer()
         // Re-arm whenever the user changes the refresh interval. We
