@@ -14,7 +14,22 @@
 
 ## Global Constraints
 
-- **Working repo:** `ericjypark/codex-island-model-catalog`. This plan does **not** touch the `codex-island` app repo.
+> **Repo split, decided after Task 6.** Tasks 1–6 were built in a single repo
+> and then split, because publishing the k8s manifests would expose the shape
+> of a personal deployment — namespace, secret name, schedule, image path —
+> which the app repo's own `CLAUDE.md` says belongs in maintainer-only
+> storage. The code needed no change: `cmd/sync` already reads everything from
+> `REPO_DIR`, and the entrypoint already clones that directory by URL. Task
+> text below still reads as one repo; the file lists are what matter.
+>
+> - **`ericjypark/codex-island-model-catalog`** (public) — `v1/models.json`,
+>   `overrides.json`, `config.json`, `.nojekyll`, `README.md`. The audit
+>   surface and the PR surface.
+> - **`ericjypark/codex-island-infra`** (private) — Go module
+>   `github.com/ericjypark/codex-island-infra`, `Dockerfile`, CI, `k8s/`.
+>   Builds `ghcr.io/ericjypark/codex-island-infra:<sha>`.
+
+- **Working repos:** the two above. This plan does **not** touch the `codex-island` app repo.
 - **Go standard library only.** No third-party modules. `go.mod` must have an empty `require` block.
 - **Schema version is 1.** Any breaking payload change ships at `/v2/models.json`; `/v1/` keeps its shape forever.
 - **The bot never removes a model.** If LiteLLM drops an entry, the published value stays.
@@ -1902,23 +1917,37 @@ The manual, out-of-band steps. Everything before this was local.
 - Consumes: everything from Tasks 1–6.
 - Produces: a live URL the companion app plan consumes.
 
-- [ ] **Step 1: Push and make the repo public**
+- [ ] **Step 1: Push the private infra repo**
 
 ```bash
-git push -u origin main
+cd ~/Desktop/Projects/codex-island-infra && git push -u origin main
+```
+
+- [ ] **Step 2: Push the catalog repo and make it public**
+
+```bash
+cd ~/Desktop/Projects/codex-island-model-catalog && git push -u origin main
+```
+
+```bash
 gh repo edit ericjypark/codex-island-model-catalog --visibility public --accept-visibility-change-consequences
 ```
 
-- [ ] **Step 2: Verify CI built and pushed the image**
+- [ ] **Step 3: Verify CI built and pushed the image**
+
+CI lives in the infra repo, and so does the image.
 
 ```bash
-gh run watch --exit-status -R ericjypark/codex-island-model-catalog
-gh api /users/ericjypark/packages/container/codex-island-model-catalog/versions --jq '.[0].metadata.container.tags'
+gh run watch --exit-status -R ericjypark/codex-island-infra
+```
+
+```bash
+gh api /users/ericjypark/packages/container/codex-island-infra/versions --jq '.[0].metadata.container.tags'
 ```
 
 Expected: the workflow succeeds and the package lists the head commit SHA as a tag.
 
-- [ ] **Step 3: Enable GitHub Pages**
+- [ ] **Step 4: Enable GitHub Pages on the catalog repo**
 
 ```bash
 gh api -X POST repos/ericjypark/codex-island-model-catalog/pages \
@@ -1942,42 +1971,59 @@ curl -sS -o /dev/null -w '%{http_code}\n' -H "If-None-Match: $ETAG" https://eric
 
 Expected: `304`. The app's daily refresh depends on this.
 
-- [ ] **Step 5: Mint the PAT and create the secret**
+- [ ] **Step 6: Mint the PAT and create the secret**
 
-Create a fine-grained PAT at https://github.com/settings/personal-access-tokens/new with **Repository access:** only `ericjypark/codex-island-model-catalog`, **Permissions:** Contents → Read and write. Then:
+**The maintainer does this step, not an agent.** Create a fine-grained PAT at
+https://github.com/settings/personal-access-tokens/new with **Repository
+access:** only `ericjypark/codex-island-model-catalog` (the data repo — the bot
+never writes to the infra repo), **Permissions:** Contents → Read and write.
+
+Then, from `~/Desktop/Projects/codex-island-infra`:
 
 ```bash
 cp k8s/secret.example.yaml k8s/secret.yaml
-# edit k8s/secret.yaml, paste the token
-scp k8s/namespace.yaml k8s/secret.yaml ericpark@ericpark:/tmp/
-ssh ericpark@ericpark 'sudo k3s kubectl apply -f /tmp/namespace.yaml -f /tmp/secret.yaml && rm /tmp/secret.yaml'
 ```
 
-- [ ] **Step 6: Pin the image SHA and deploy the CronJob**
+Paste the token into that copy, then:
 
 ```bash
-SHA=$(git rev-parse HEAD)
-sed -i '' "s|REPLACE_WITH_SHA|$SHA|" k8s/cronjob.yaml
-scp k8s/cronjob.yaml ericpark@ericpark:/tmp/
-ssh ericpark@ericpark 'sudo k3s kubectl apply -f /tmp/cronjob.yaml'
+scp k8s/namespace.yaml k8s/secret.yaml ericpark@ericpark:/tmp/ && ssh ericpark@ericpark 'sudo k3s kubectl apply -f /tmp/namespace.yaml -f /tmp/secret.yaml && rm /tmp/secret.yaml'
 ```
 
-- [ ] **Step 7: Trigger a manual run and verify it succeeds**
+- [ ] **Step 7: Pin the image SHA and deploy the CronJob**
+
+The SHA is the infra repo's head, since that is what CI built the image from.
+
+```bash
+cd ~/Desktop/Projects/codex-island-infra && sed -i '' "s|REPLACE_WITH_SHA|$(git rev-parse HEAD)|" k8s/cronjob.yaml
+```
+
+```bash
+scp k8s/cronjob.yaml ericpark@ericpark:/tmp/ && ssh ericpark@ericpark 'sudo k3s kubectl apply -f /tmp/cronjob.yaml'
+```
+
+- [ ] **Step 8: Trigger a manual run and verify it succeeds**
 
 ```bash
 ssh ericpark@ericpark 'sudo k3s kubectl -n codexisland create job --from=cronjob/model-catalog-sync manual-1'
-sleep 45
-ssh ericpark@ericpark 'sudo k3s kubectl -n codexisland logs job/manual-1'
 ```
 
-Expected: `no change (NN models)` — the catalog was already bootstrapped in Task 5, so a healthy run finds nothing to do. Any other outcome means the clone, the token, or the gate is misconfigured. Clean up: `ssh ericpark@ericpark 'sudo k3s kubectl -n codexisland delete job manual-1'`
+```bash
+sleep 60 && ssh ericpark@ericpark 'sudo k3s kubectl -n codexisland logs job/manual-1'
+```
 
-- [ ] **Step 8: Commit the pinned manifest**
+Expected: `no change (78 models)` — the catalog was bootstrapped in Task 5 and pushed in Step 2, so a healthy run finds nothing to do. Any other outcome means the clone, the token, or the gate is misconfigured. `restartPolicy: Never` means each failed attempt is its own pod, so `kubectl -n codexisland get pods` lists them all if you need to read more than one.
+
+Clean up:
 
 ```bash
-git add k8s/cronjob.yaml
-git commit -m "chore: pin sync image to released sha"
-git push
+ssh ericpark@ericpark 'sudo k3s kubectl -n codexisland delete job manual-1'
+```
+
+- [ ] **Step 9: Commit the pinned manifest**
+
+```bash
+cd ~/Desktop/Projects/codex-island-infra && git commit -qam "chore: pin sync image to released sha" && git push
 ```
 
 ---
@@ -1986,6 +2032,7 @@ git push
 
 - `https://ericjypark.github.io/codex-island-model-catalog/v1/models.json` returns 200 with an ETag, and 304 on conditional GET.
 - Every model in `Sources/Cost/Pricing.swift` appears in the payload with matching rates.
-- `go test ./...` passes.
+- `go test ./...` passes in the infra repo.
 - A manual CronJob run completes and reports `no change`.
-- `k8s/secret.yaml` is untracked; no token appears anywhere in git history.
+- The public catalog repo contains only `v1/models.json`, `overrides.json`, `config.json`, `.nojekyll`, `README.md`, `.gitignore` — no deployment shape.
+- `k8s/secret.yaml` is untracked; no token appears anywhere in either repo's history.
