@@ -4,6 +4,21 @@ User-facing changes per release. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); dates are when the
 tag was cut.
 
+## [0.1.20] - 2026-07-26
+
+A one-line pricing fix, shipped on its own so heavy Opus 5 users stop
+under-counting today.
+
+### Fixed
+
+- **Claude Opus 5 now prices.** Sessions on the new model were counted as
+  tokens but priced at $0, so the Cost screen showed an `⚠ 1 unpriced`
+  badge and a dollar total that was short by every Opus 5 turn. Opus 5
+  bills in the same re-tiered Opus band as 4.5–4.8 ($5 / $25 per million
+  input / output). Note that Opus 5's *fast mode* bills at a premium
+  Claude Code doesn't record in its session logs, so — as with `ccusage`
+  — those turns are still counted at the standard rate.
+
 ## [0.1.19] - 2026-07-22
 
 The stop-nagging-me release: no more macOS keychain password popups, and no
