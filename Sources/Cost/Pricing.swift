@@ -10,12 +10,10 @@ import Foundation
 /// LiteLLM has no entry.
 ///
 /// To refresh the seed: re-fetch the four rates per model from
-/// `https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json`
-/// and bump `seedSnapshotDate`. This is housekeeping, not a release
-/// requirement — the catalog covers new models without an app update.
+/// `https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json`.
+/// This is housekeeping, not a release requirement — the catalog covers new
+/// models without an app update.
 enum Pricing {
-    static let seedSnapshotDate = "2026-07-10"
-
     struct Rates {
         let inputPerMillion: Double
         let outputPerMillion: Double
@@ -217,30 +215,6 @@ enum Pricing {
         return seedTable[canonical]
     }
 
-    private static let snapshotFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
-    }()
-
-    /// Days since the app last reached the catalog, falling back to the age of
-    /// the embedded seed when no fetch has ever succeeded.
-    ///
-    /// Deliberately not the catalog's own `generatedAt`: the sync bot commits
-    /// only when prices change, so a long-stable table would read as months
-    /// stale while the app was in fact checking daily and finding nothing new.
-    /// "How long since I reached the source" is what predicts whether these
-    /// numbers are wrong.
-    static func daysSincePricingRefresh(now: Date = Date()) -> Int {
-        let origin = PricingCatalog.lastFetched
-            ?? snapshotFormatter.date(from: seedSnapshotDate)
-        guard let origin else { return 0 }
-        var calendar = Calendar(identifier: .gregorian)
-        if let utc = TimeZone(identifier: "UTC") { calendar.timeZone = utc }
-        return max(0, calendar.dateComponents([.day], from: origin, to: now).day ?? 0)
-    }
 
     /// Strip Anthropic-style date suffixes (e.g. "claude-haiku-4-5-20251001"
     /// → "claude-haiku-4-5") so the snapshot table doesn't need an entry per

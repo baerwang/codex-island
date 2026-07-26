@@ -22,11 +22,6 @@ struct PricingPrecedenceTests {
     }
 
     static func main() {
-        // Runs first, before any install: with no successful fetch the
-        // freshness number falls back to the seed's build date.
-        expect(Pricing.daysSincePricingRefresh(now: now) > 0,
-               "seed date drives freshness before any fetch")
-
         // Seed-only behavior, unchanged from before the catalog existed.
         expect(Pricing.cost(for: ev("claude-opus-4-8")) == 5, "seed prices opus at $5/M input")
         expect(Pricing.isKnown("claude-sonnet-4-5"), "seed model is known")
@@ -63,10 +58,6 @@ struct PricingPrecedenceTests {
                "remote displayName is used")
         expect(Pricing.prettyModelName("claude-sonnet-4-5") == "Sonnet 4.5",
                "algorithm covers models the catalog omits")
-
-        // Freshness now tracks the successful fetch, not the seed date.
-        expect(Pricing.daysSincePricingRefresh(now: now) == 3,
-               "freshness counts days since last successful fetch")
 
         exit(failures == 0 ? 0 : 1)
     }
