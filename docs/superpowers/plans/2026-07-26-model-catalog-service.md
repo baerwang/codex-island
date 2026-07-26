@@ -1510,17 +1510,22 @@ func commit(repo string, count int) error {
 		"-c", "user.email=bot@codexisland.dev",
 		"-c", "user.name=codexisland-catalog-bot",
 	}
-	steps := [][]string{
-		{"add", catalogPath},
-		append(append([]string{}, ident...),
-			"commit", "-m", fmt.Sprintf("chore: refresh model catalog (%d models)", count)),
-		{"push"},
+	// Named rather than derived from args[0]: the commit step leads with the
+	// identity flags, so args[0] would report a failed commit as "git -c".
+	steps := []struct {
+		name string
+		args []string
+	}{
+		{"add", []string{"add", catalogPath}},
+		{"commit", append(append([]string{}, ident...),
+			"commit", "-m", fmt.Sprintf("chore: refresh model catalog (%d models)", count))},
+		{"push", []string{"push"}},
 	}
-	for _, args := range steps {
-		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+	for _, step := range steps {
+		cmd := exec.Command("git", append([]string{"-C", repo}, step.args...)...)
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("git %s: %w", args[0], err)
+			return fmt.Errorf("git %s: %w", step.name, err)
 		}
 	}
 	return nil
