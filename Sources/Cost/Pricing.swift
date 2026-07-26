@@ -20,12 +20,19 @@ enum Pricing {
     }
 
     private static let table: [String: Rates] = [
-        // Anthropic — LiteLLM lists Opus 4-5/4-6/4-7/4-8 at the same rates
-        // (cheaper than the original Opus 4 because Anthropic re-tiered the
-        // Opus line in 2025).
+        // Anthropic — LiteLLM lists Opus 5 and 4-5/4-6/4-7/4-8 at the same
+        // rates (cheaper than the original Opus 4 because Anthropic re-tiered
+        // the Opus line in 2025). Opus 5's fast mode bills at $10/$50 but
+        // Claude Code logs it under the same `claude-opus-5` id with no speed
+        // marker in `message.model`, so — like ccusage — we price every row at
+        // the standard tier.
         "claude-fable-5": Rates(
             inputPerMillion: 10, outputPerMillion: 50,
             cacheCreationPerMillion: 12.50, cacheReadPerMillion: 1.00
+        ),
+        "claude-opus-5": Rates(
+            inputPerMillion: 5, outputPerMillion: 25,
+            cacheCreationPerMillion: 6.25, cacheReadPerMillion: 0.50
         ),
         "claude-opus-4-8": Rates(
             inputPerMillion: 5, outputPerMillion: 25,
@@ -214,6 +221,36 @@ enum Pricing {
     /// breakdown views) so date-pinned variants group with their base model.
     static func canonicalModelName(_ raw: String) -> String {
         canonicalModel(raw)
+    }
+
+    /// Pretty-print the canonical model id for UI rows. Falls back to the
+    /// raw id if no friendlier name is wired up yet — better than a blank.
+    static func prettyModelName(_ canonical: String) -> String {
+        // Anthropic: "claude-opus-4-7" → "Opus 4.7"
+        if canonical.hasPrefix("claude-") {
+            let trimmed = String(canonical.dropFirst("claude-".count))
+            // Split at first dash, then collapse remaining dashes into dots
+            // so "opus-4-7" → "opus.4.7" → "Opus 4.7".
+            guard let dash = trimmed.firstIndex(of: "-") else {
+                return trimmed.capitalized
+            }
+            let family = String(trimmed[..<dash]).capitalized
+            let version = trimmed[trimmed.index(after: dash)...]
+                .replacingOccurrences(of: "-", with: ".")
+            return "\(family) \(version)"
+        }
+        // OpenAI: keep as-is, just uppercase the GPT prefix.
+        if canonical.hasPrefix("gpt-") {
+            return canonical.replacingOccurrences(of: "gpt-", with: "GPT-")
+        }
+        // OpenAI reasoning family ("o3-pro", "o4-mini-high", etc.) — already
+        // short and conventional, capitalize only the leading letter so it
+        // matches the typographic weight of "GPT-..." / "Opus 4.7".
+        if let first = canonical.first, first == "o", canonical.count > 1,
+           canonical.dropFirst().first?.isNumber == true {
+            return canonical.prefix(1).uppercased() + canonical.dropFirst()
+        }
+        return canonical
     }
 
     private static func canonicalModel(_ raw: String) -> String {
