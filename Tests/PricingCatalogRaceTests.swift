@@ -1,9 +1,20 @@
 import Foundation
 
-/// Hammers the store from several threads while a writer swaps the whole
-/// table. Built with `-sanitize=thread`: if the lock in `PricingCatalog` is
-/// removed, TSan reports the race on the backing dictionary and aborts, so
-/// this fails loudly rather than flaking.
+/// Hammers the store from several threads, one accessor per thread. Built
+/// with `-sanitize=thread`: removing a lock leaves that thread with no
+/// happens-before edges, TSan reports the race and aborts, so this fails
+/// loudly rather than flaking.
+///
+/// One accessor per thread is load-bearing, not style. With a single thread
+/// calling several accessors in sequence, the locks on either side of an
+/// unlocked one cover it and the sanitizer stays silent.
+///
+/// Known gap: `markVerified(at:)` is NOT covered. Removing its lock is not
+/// detected, across two harness designs and ten runs. The likely cause is
+/// shadow-memory eviction — `install` also writes `fetchedAt`, at high
+/// frequency and under the lock, and TSan keeps only four shadow cells per
+/// eight-byte granule. `install`, `rates(for:)` and `storedETag` are all
+/// verified to fail when their locks are removed.
 @main
 struct PricingCatalogRaceTests {
     static func rates(_ input: Double) -> [String: CatalogRates] {
