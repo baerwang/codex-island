@@ -621,28 +621,41 @@ touch only Task 1's accessors. `storedETag` and `markVerified(at:)` are new
 shared state, and stripping their locks leaves the sanitizer silent — the
 regression net stops at the task boundary unless it is widened here.
 
-In the writer closure, replace the single `install` call with all three
-mutations so every accessor is exercised:
+**One accessor per thread.** This is the load-bearing detail, not a style
+choice. If a single thread calls `install`, `markVerified`, and `persist` in
+sequence, the locks in the calls on either side of an unlocked one establish
+happens-before edges that cover it, and the sanitizer stays silent even though
+the write is genuinely unsynchronized. Give each accessor a thread whose only
+synchronization is its own lock, so removing that lock leaves the thread with
+no edges at all.
+
+Replace the single writer closure with three:
 
 ```swift
         DispatchQueue.global().async(group: group) {
             var flip = false
             while Date() < deadline {
                 PricingCatalog.install(models: rates(flip ? 1 : 9), fetchedAt: Date())
+                flip.toggle()
+            }
+        }
+        DispatchQueue.global().async(group: group) {
+            while Date() < deadline {
                 PricingCatalog.markVerified(at: Date())
-                // to: nil writes no file — this exists to touch the ETag.
+            }
+        }
+        DispatchQueue.global().async(group: group) {
+            var flip = false
+            while Date() < deadline {
+                // to: nil writes no file — this exists only to touch the ETag,
+                // which nothing public reads, so the race it must expose is
+                // write-against-write between this thread and the next.
                 PricingCatalog.persist(
                     CatalogPayload(schemaVersion: 1, generatedAt: "x", models: rates(1)),
                     etag: flip ? "\"a\"" : "\"b\"", at: Date(), to: nil)
                 flip.toggle()
             }
         }
-```
-
-and add a second writer, so the ETag has a competing writer rather than only
-a single one (nothing public reads it):
-
-```swift
         DispatchQueue.global().async(group: group) {
             while Date() < deadline {
                 PricingCatalog.persist(
