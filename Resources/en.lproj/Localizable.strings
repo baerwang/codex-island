@@ -19,7 +19,6 @@
 "1 Codex reset available" = "1 Codex reset available";
 "1 reset available" = "1 reset available";
 "⚠ %d unpriced" = "⚠ %d unpriced";
-" · pricing data %dd old" = " · pricing data %dd old";
 "$%@ cumulative" = "$%@ cumulative";
 "5h" = "5h";
 "All tokens" = "All tokens";
@@ -65,7 +64,6 @@
 "Input + output only. Matches Anthropic's claude.ai stats." = "Input + output only. Matches Anthropic's claude.ai stats.";
 "Island width" = "Island width";
 "last scan %@" = "last scan %@";
-"last scan %@ · pricing data %dd old" = "last scan %@ · pricing data %dd old";
 "Launch at Login" = "Launch at Login";
 "Language" = "Language";
 "Later" = "Later";
@@ -102,14 +100,12 @@
 "Restart now" = "Restart now";
 "Ring" = "Ring";
 "scanning local logs…" = "scanning local logs…";
-"scanning local logs… · pricing data %dd old" = "scanning local logs… · pricing data %dd old";
 "Settings" = "Settings";
 "Show on" = "Show on";
 "Sparkline" = "Sparkline";
 "Spacing" = "Spacing";
 "Stepped" = "Stepped";
 "swipe panel to view" = "swipe panel to view";
-"swipe panel to view · pricing data %dd old" = "swipe panel to view · pricing data %dd old";
 "Synced" = "Synced";
 "Synced %@" = "Synced %@";
 "synced %@" = "synced %@";

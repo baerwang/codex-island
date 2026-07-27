@@ -1,17 +1,19 @@
 import Foundation
 
-/// Embedded snapshot of per-million-token API prices in USD. Mirrors LiteLLM's
-/// `model_prices_and_context_window.json` for the models we actually expect
-/// in Claude Code and Codex CLI sessions, so totals cross-check against
-/// `npx ccusage` and `npx @ccusage/codex` to within rounding.
+/// Model prices in USD per million tokens.
 ///
-/// To refresh: bump `snapshotDate` and re-fetch the four rates per model
-/// from `https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json`.
-/// Unknown models silently price to $0 — same behavior as ccusage when
+/// The live source is the published catalog (see `PricingCatalog`); the table
+/// below is the build-time seed, used until the first successful fetch and as
+/// the permanent fallback for anything the catalog omits. Totals cross-check
+/// against `npx ccusage` and `npx @ccusage/codex` to within rounding, and
+/// unknown models silently price to $0 — same behavior as ccusage when
 /// LiteLLM has no entry.
+///
+/// To refresh the seed: re-fetch the four rates per model from
+/// `https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json`.
+/// This is housekeeping, not a release requirement — the catalog covers new
+/// models without an app update.
 enum Pricing {
-    static let snapshotDate = "2026-07-10"
-
     struct Rates {
         let inputPerMillion: Double
         let outputPerMillion: Double
@@ -19,7 +21,7 @@ enum Pricing {
         let cacheReadPerMillion: Double
     }
 
-    private static let table: [String: Rates] = [
+    private static let seedTable: [String: Rates] = [
         // Anthropic — LiteLLM lists Opus 5 and 4-5/4-6/4-7/4-8 at the same
         // rates (cheaper than the original Opus 4 because Anthropic re-tiered
         // the Opus line in 2025). Opus 5's fast mode bills at $10/$50 but
@@ -182,8 +184,7 @@ enum Pricing {
     /// Claude Code workflows. ccusage's per-bucket threshold check would
     /// disagree with Anthropic's per-position-in-context billing anyway.
     static func cost(for event: TokenEvent) -> Double {
-        let lookup = canonicalModel(event.model)
-        guard let rates = table[lookup] else { return 0 }
+        guard let rates = resolvedRates(for: canonicalModel(event.model)) else { return 0 }
 
         let input = Double(event.inputTokens) / 1_000_000 * rates.inputPerMillion
         let output = Double(event.outputTokens) / 1_000_000 * rates.outputPerMillion
@@ -193,27 +194,27 @@ enum Pricing {
         return input + output + cacheCreate + cacheRead
     }
 
-    /// Whether the embedded snapshot has a price entry for this model.
-    /// Lets callers warn the user about unpriced spend without re-implementing
-    /// the canonical-name stripping logic.
+    /// Whether either source has a price entry for this model. Lets callers
+    /// warn the user about unpriced spend without re-implementing the
+    /// canonical-name stripping logic.
     static func isKnown(_ rawModel: String) -> Bool {
-        table[canonicalModel(rawModel)] != nil
+        resolvedRates(for: canonicalModel(rawModel)) != nil
     }
 
-    /// Calendar days between `snapshotDate` and now (UTC). Returns 0 if the
-    /// snapshot string fails to parse, so a malformed constant is treated as
-    /// fresh rather than triggering a permanent staleness warning.
-    static var daysSinceSnapshot: Int {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        guard let snapshot = formatter.date(from: snapshotDate) else { return 0 }
-        var calendar = Calendar(identifier: .gregorian)
-        if let utc = TimeZone(identifier: "UTC") { calendar.timeZone = utc }
-        let components = calendar.dateComponents([.day], from: snapshot, to: Date())
-        return max(0, components.day ?? 0)
+    /// Remote catalog first, embedded seed second. The seed is what keeps a
+    /// catalog that omits a model from silently pricing it at $0.
+    private static func resolvedRates(for canonical: String) -> Rates? {
+        if let remote = PricingCatalog.rates(for: canonical) {
+            return Rates(
+                inputPerMillion: remote.inputPerMillion,
+                outputPerMillion: remote.outputPerMillion,
+                cacheCreationPerMillion: remote.cacheCreationPerMillion,
+                cacheReadPerMillion: remote.cacheReadPerMillion
+            )
+        }
+        return seedTable[canonical]
     }
+
 
     /// Strip Anthropic-style date suffixes (e.g. "claude-haiku-4-5-20251001"
     /// → "claude-haiku-4-5") so the snapshot table doesn't need an entry per
@@ -226,6 +227,9 @@ enum Pricing {
     /// Pretty-print the canonical model id for UI rows. Falls back to the
     /// raw id if no friendlier name is wired up yet — better than a blank.
     static func prettyModelName(_ canonical: String) -> String {
+        if let name = PricingCatalog.rates(for: canonical)?.displayName, !name.isEmpty {
+            return name
+        }
         // Anthropic: "claude-opus-4-7" → "Opus 4.7"
         if canonical.hasPrefix("claude-") {
             let trimmed = String(canonical.dropFirst("claude-".count))

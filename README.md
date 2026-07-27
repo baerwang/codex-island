@@ -279,6 +279,11 @@ Native app behavior:
 - No crash reporting.
 - No proxy server.
 - No credentials are stored by CodexIsland.
+- Model prices are fetched once a day from a public, GitHub-hosted catalog
+  ([codex-island-model-catalog](https://github.com/ericjypark/codex-island-model-catalog)).
+  The request carries no identifier, no token, and no usage data — it is a
+  plain GET for a static JSON file, and the app works from a local cache when
+  it fails.
 - Codex tokens are read locally from `~/.codex/auth.json`.
 - Claude tokens are read from `CLAUDE_CODE_OAUTH_TOKEN`, Claude's credentials
   file, or the macOS Keychain. CodexIsland never refreshes or writes them.

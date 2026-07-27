@@ -589,12 +589,6 @@ struct SettingsView: View {
         .padding(.bottom, 14)
     }
 
-    /// Days past the embedded pricing snapshot before the Cost section
-    /// admits the data may be stale. Anthropic re-tiered Opus once already,
-    /// so two months without a refresh is the point where dollar totals
-    /// could meaningfully drift from reality.
-    private static let pricingFreshnessThreshold = 60
-
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
         f.locale = L10n.locale
@@ -603,23 +597,14 @@ struct SettingsView: View {
     }()
 
     private func costSubtitle() -> String {
-        let days = Pricing.daysSinceSnapshot
-        let isStale = days > Self.pricingFreshnessThreshold
-
         if cost.loading {
-            return isStale
-                ? L10n.tr("scanning local logs… · pricing data %dd old", days)
-                : L10n.tr("scanning local logs…")
-        } else if let updated = cost.lastUpdated {
-            let relative = Self.relativeFormatter.localizedString(for: updated, relativeTo: Date())
-            return isStale
-                ? L10n.tr("last scan %@ · pricing data %dd old", relative, days)
-                : L10n.tr("last scan %@", relative)
+            return L10n.tr("scanning local logs…")
         }
-
-        return isStale
-            ? L10n.tr("swipe panel to view · pricing data %dd old", days)
-            : L10n.tr("swipe panel to view")
+        if let updated = cost.lastUpdated {
+            let relative = Self.relativeFormatter.localizedString(for: updated, relativeTo: Date())
+            return L10n.tr("last scan %@", relative)
+        }
+        return L10n.tr("swipe panel to view")
     }
 
     private var chartSection: some View {
