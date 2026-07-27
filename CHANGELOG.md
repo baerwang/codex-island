@@ -4,6 +4,28 @@ User-facing changes per release. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); dates are when the
 tag was cut.
 
+## [0.1.21] - 2026-07-26
+
+Model prices now come from a published catalog instead of the app binary,
+so a new model no longer waits on an app release to price correctly.
+
+### Changed
+
+- **New models price themselves.** Until now every new model needed a
+  CodexIsland release before its cost showed up — in the gap, its turns
+  counted as tokens but totalled $0. Prices now come from a public
+  [catalog][catalog] the app refreshes once a day, and it already carries
+  78 models, including many this app has never shipped a price for. The
+  request sends no identifier and no usage data; if it fails, the app
+  keeps using its last good copy, and failing that the table baked into
+  the build. Your totals cannot go blank because the fetch went wrong.
+- **The "pricing data N days old" note in Settings is gone.** It existed
+  to warn that a frozen price table had drifted, which was worth saying
+  when the only fix was updating the app. With prices refreshing on their
+  own it was a warning about nothing the reader could act on.
+
+[catalog]: https://github.com/ericjypark/codex-island-model-catalog
+
 ## [0.1.20] - 2026-07-26
 
 A one-line pricing fix, shipped on its own so heavy Opus 5 users stop
