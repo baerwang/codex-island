@@ -90,10 +90,6 @@ struct NotchPeekPill: View {
         }
     }
 
-    private var hasValue: Bool {
-        usage.usedPercent > 0 || usage.error == nil
-    }
-
     /// Spinner only fires for the cold-start case (loading AND we have nothing
     /// to show). If we have a prior value, keep showing it during refresh —
     /// same principle as UsageStore.isErrorOnly's "don't blank the panel" rule.

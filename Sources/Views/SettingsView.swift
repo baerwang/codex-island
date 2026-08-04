@@ -770,6 +770,9 @@ struct SettingsView: View {
     }
 
     private func windowCaption(_ w: WindowUsage) -> String {
+        // The parse-omission sentinel is a plan shape, not a fault — no
+        // warning glyph for a window the provider doesn't offer.
+        if w.isUnreported { return "—" }
         if let err = w.error, w.percentInt == 0 { return "⚠ \(err)" }
         return "\(w.displayedPercentInt(mode: usageDisplay.mode))%"
     }

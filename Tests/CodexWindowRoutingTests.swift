@@ -109,6 +109,19 @@ struct CodexWindowRoutingTests {
         expect(fiveHourOnly.fiveHour.usedPercent == 0.55, "lone 18000s window lands in 5h")
         expect(!fiveHourOnly.weekly.hasReading, "weekly stays a no-reading window")
 
+        // MARK: same-kind collision — the earlier slot wins, never a silent overwrite
+
+        // Speculative shape (a daily 86400s window classifies as weekly):
+        // the primary slot's real weekly reading must survive the sibling.
+        let collision = UsageFetcher.routeCodexWindows(parse("""
+        {
+          "primary_window": { "used_percent": 90, "limit_window_seconds": 604800 },
+          "secondary_window": { "used_percent": 10, "limit_window_seconds": 86400 }
+        }
+        """))
+        expect(collision.weekly.usedPercent == 0.90, "primary's weekly reading survives the collision")
+        expect(!collision.fiveHour.hasReading, "the colliding sibling doesn't leak into 5h")
+
         print(failures == 0 ? "ALL PASS" : "\(failures) FAILURE(S)")
         exit(failures == 0 ? 0 : 1)
     }

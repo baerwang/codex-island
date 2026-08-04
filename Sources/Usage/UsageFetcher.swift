@@ -67,8 +67,8 @@ enum UsageFetcher {
     /// separates 5h (18000s) from weekly (604800s) — and fall back to slot
     /// order for older shapes that omit `limit_window_seconds`.
     static func routeCodexWindows(_ rl: [String: Any]) -> (fiveHour: WindowUsage, weekly: WindowUsage) {
-        var fiveHour = WindowUsage.unknown
-        var weekly = WindowUsage.unknown
+        var fiveHour: WindowUsage?
+        var weekly: WindowUsage?
         let slots: [(key: String, fallback: UsageWindow)] = [
             ("primary_window", .fiveHour),
             ("secondary_window", .weekly),
@@ -77,12 +77,15 @@ enum UsageFetcher {
             guard let d = rl[key] as? [String: Any] else { continue }
             let span = d["limit_window_seconds"] as? Double
             let kind = span.map { $0 >= 86400 ? UsageWindow.weekly : .fiveHour } ?? fallback
+            // Same-kind collision: the earlier slot wins. Primary is the
+            // provider's headline window — a trailing sibling silently
+            // overwriting it would drop the real reading.
             switch kind {
-            case .fiveHour: fiveHour = parseCodexWindow(d)
-            case .weekly:   weekly = parseCodexWindow(d)
+            case .fiveHour: if fiveHour == nil { fiveHour = parseCodexWindow(d) }
+            case .weekly:   if weekly == nil { weekly = parseCodexWindow(d) }
             }
         }
-        return (fiveHour, weekly)
+        return (fiveHour ?? .unknown, weekly ?? .unknown)
     }
 
     private static func parseCodexWindow(_ obj: Any?) -> WindowUsage {
