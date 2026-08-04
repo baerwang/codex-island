@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Combine
 import Network
@@ -26,6 +27,17 @@ final class UsageStore: ObservableObject {
     private var netMonitor: NWPathMonitor?
     private let netQueue = DispatchQueue(label: "UsageStore.network")
     private var lastNetStatus: NWPath.Status?
+    /// When the armed timer is scheduled to fire next. A fire that lands far
+    /// past this is the catch-up fire of a wake (see `WakeScheduling`).
+    private var nextExpectedFire: Date?
+    /// End of the post-wake grace window. While set and in the future, the
+    /// network monitor's transition refresh stands down — the deferred wake
+    /// refresh owns the first post-wake probe.
+    private var wakeGraceUntil: Date?
+    private var wakeRefreshTask: Task<Void, Never>?
+    private var credWatchTask: Task<Void, Never>?
+    private var cooldownRetryTask: Task<Void, Never>?
+    private var sleepWakeObservers: [NSObjectProtocol] = []
 
     /// Anthropic's /api/oauth/usage is aggressively rate-limited per token.
     /// `RefreshIntervalStore` enforces a 5-minute floor (300/900/1800).
@@ -134,6 +146,7 @@ final class UsageStore: ObservableObject {
                 if UsageStore.isRateLimited(cl) {
                     self.claudeCooldownUntil = Date().addingTimeInterval(UsageStore.rateLimitCooldown)
                     NSLog("CodexIsland: Claude usage rate-limited; skipping Claude fetches for %.0fs", UsageStore.rateLimitCooldown)
+                    self.scheduleCooldownRetry()
                 } else {
                     self.claudeCooldownUntil = nil
                 }
@@ -142,9 +155,21 @@ final class UsageStore: ObservableObject {
                 // token can never refresh those numbers again, and
                 // `ChartsBlock` keys the re-auth prompt off the error-only
                 // shape. Transient errors (429/network) still carry forward.
-                self.claude = ClaudeCredentials.isTerminalAuthFailure(cl)
+                let terminal = ClaudeCredentials.isTerminalAuthFailure(cl)
+                self.claude = terminal
                     ? cl
                     : AppUsage.merged(fetched: cl, retaining: self.claude, at: now)
+                // "token expired" outlives its cause by up to a full poll
+                // interval: Claude Code rotates the token seconds after the
+                // user runs it, but the next scheduled poll is 5–30 min out.
+                // Watch the credential store's metadata and refetch the
+                // moment it changes.
+                if terminal {
+                    self.watchCredentialStore()
+                } else if cl.fiveHour.error == nil || cl.weekly.error == nil {
+                    self.credWatchTask?.cancel()
+                    self.credWatchTask = nil
+                }
             }
             if let codexResetCredits {
                 self.codexResetCredits = codexResetCredits
@@ -309,22 +334,152 @@ final class UsageStore: ObservableObject {
                 Task { @MainActor in self?.armTimer() }
             }
         startNetworkMonitor()
+        startSleepWakeObservers()
     }
 
     func stopAutoRefresh() {
         pollTimer?.invalidate()
         pollTimer = nil
+        nextExpectedFire = nil
         intervalCancellable?.cancel()
         intervalCancellable = nil
         netMonitor?.cancel()
         netMonitor = nil
         lastNetStatus = nil
+        let wsCenter = NSWorkspace.shared.notificationCenter
+        sleepWakeObservers.forEach { wsCenter.removeObserver($0) }
+        sleepWakeObservers = []
+        wakeRefreshTask?.cancel()
+        wakeRefreshTask = nil
+        wakeGraceUntil = nil
+        credWatchTask?.cancel()
+        credWatchTask = nil
+        cooldownRetryTask?.cancel()
+        cooldownRetryTask = nil
     }
 
     private func armTimer() {
         pollTimer?.invalidate()
+        nextExpectedFire = Date().addingTimeInterval(pollInterval)
         pollTimer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+            Task { @MainActor in self?.timerFired() }
+        }
+    }
+
+    /// A repeating timer that slept through its fire date delivers one
+    /// immediate catch-up fire on wake — the exact moment the network is
+    /// still associating, every dormant Claude Code session's reconnect
+    /// traffic is bursting against the shared /api/oauth/usage limiter, and
+    /// the access token may have expired mid-sleep. Probing then is how
+    /// "rate limited" (sticky, arms a 15-min cooldown) and "token expired"
+    /// land right as the lid opens. Recognize the overdue fire and defer it
+    /// past the burst instead of burning it.
+    private func timerFired() {
+        if WakeScheduling.isOverdueFire(now: Date(), expected: nextExpectedFire) {
+            armTimer()
+            deferPostWakeRefresh()
+        } else {
+            nextExpectedFire = Date().addingTimeInterval(pollInterval)
+            refresh()
+        }
+    }
+
+    /// `didWakeNotification` and the overdue-fire check overlap on long
+    /// sleeps — whichever runs first wins and the other converges — but each
+    /// also covers the other's gap: the notification handles wakes where no
+    /// timer fire was pending, the overdue check handles a catch-up fire the
+    /// run loop delivers before the notification.
+    private func startSleepWakeObservers() {
+        let wsCenter = NSWorkspace.shared.notificationCenter
+        sleepWakeObservers = [
+            wsCenter.addObserver(
+                forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    // Drop the in-flight and pending work: a request cut off
+                    // by sleep finalizes at wake as a dead-socket error, and
+                    // the cancellation guard in refresh() discards it.
+                    self?.refreshTask?.cancel()
+                    self?.wakeRefreshTask?.cancel()
+                }
+            },
+            wsCenter.addObserver(
+                forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.armTimer()
+                    self?.deferPostWakeRefresh()
+                }
+            },
+        ]
+    }
+
+    /// Schedule the first post-wake refresh after a grace delay, replacing
+    /// any pending one. Skipped entirely after short naps — the data is
+    /// fresher than one poll interval, and refreshing every lid flip would
+    /// undercut the 5-minute floor. The freshness recheck inside the task
+    /// also collapses the didWake/catch-up overlap into a single probe.
+    private func deferPostWakeRefresh() {
+        guard WakeScheduling.shouldRefreshAfterWake(
+            lastPoll: lastUpdated, now: Date(), pollInterval: pollInterval
+        ) else { return }
+        wakeGraceUntil = Date().addingTimeInterval(WakeScheduling.graceDelay)
+        wakeRefreshTask?.cancel()
+        wakeRefreshTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(WakeScheduling.graceDelay * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            guard WakeScheduling.shouldRefreshAfterWake(
+                lastPoll: self.lastUpdated, now: Date(), pollInterval: self.pollInterval
+            ) else { return }
+            self.refreshTask?.cancel()
+            await self.refreshTask?.value
+            if !Task.isCancelled { self.refresh() }
+        }
+    }
+
+    /// Recover from a terminal auth failure the moment the credential store
+    /// actually changes, instead of at the next scheduled poll up to 30 min
+    /// out. The fingerprint is metadata-only (keychain attribute query +
+    /// file mtime — never trips the ACL prompt, no network), so the 5s tick
+    /// costs nothing; the secret read and the probe happen only once Claude
+    /// Code (or `claude /login`) has written new credentials. The baseline
+    /// is taken after the failing walk's own store re-read, so a rotation
+    /// landing in the microseconds between them is caught by the next poll.
+    private func watchCredentialStore() {
+        guard credWatchTask == nil else { return }
+        let baseline = ClaudeCredentials.credentialStoreFingerprint()
+        credWatchTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard !Task.isCancelled else { break }
+                if ClaudeCredentials.credentialStoreFingerprint() != baseline {
+                    ClaudeCredentials.clearCache()
+                    guard let self else { return }
+                    self.credWatchTask = nil
+                    self.refreshTask?.cancel()
+                    await self.refreshTask?.value
+                    if !Task.isCancelled { self.refresh() }
+                    return
+                }
+            }
+            self?.credWatchTask = nil
+        }
+    }
+
+    /// One-shot refresh just past the cooldown so "rate limited" clears at
+    /// the earliest safe moment. Without it, recovery waits for the next
+    /// timer tick to line up AFTER the cooldown — worst case
+    /// interval + cooldown ≈ 45 min on the 30m preset.
+    private func scheduleCooldownRetry() {
+        cooldownRetryTask?.cancel()
+        cooldownRetryTask = Task { [weak self] in
+            let delay = UsageStore.rateLimitCooldown + 10
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            self.cooldownRetryTask = nil
+            self.refreshTask?.cancel()
+            await self.refreshTask?.value
+            if !Task.isCancelled { self.refresh() }
         }
     }
 
@@ -345,6 +500,10 @@ final class UsageStore: ObservableObject {
                 self.lastNetStatus = path.status
                 guard path.status == .satisfied,
                       let prior = was, prior != .satisfied else { return }
+                // Post-wake, Wi-Fi re-associates within seconds — refreshing
+                // on that transition would probe straight into the wake
+                // burst. The deferred wake refresh owns the first probe.
+                if let grace = self.wakeGraceUntil, Date() < grace { return }
                 // Cancel any in-flight refresh — its URLSession call was
                 // started on the dead path and is going to return an
                 // error. Wait for it to finalize so its loading=false
