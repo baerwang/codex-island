@@ -120,6 +120,25 @@ struct WakeRecoveryTests {
             "a 429 pair is transient — it must keep carrying, never wipe"
         )
 
+        // MARK: refresh-ping gating — only a plain expiry is ping-fixable
+
+        let reauthNeeded = pair(
+            errored(ClaudeCredentials.reauthRequiredMessage),
+            errored(ClaudeCredentials.reauthRequiredMessage)
+        )
+        expect(
+            ClaudeCredentials.isExpiredTokenFailure(tokenExpired),
+            "an expired-token pair is what the CLI refresh ping can fix"
+        )
+        expect(
+            !ClaudeCredentials.isExpiredTokenFailure(reauthNeeded),
+            "a missing-scope pair must never ping — refresh re-issues the same scopes"
+        )
+        expect(
+            !ClaudeCredentials.isExpiredTokenFailure(rateLimited),
+            "a 429 pair must never ping — it would feed the tripped limiter"
+        )
+
         // After the wipe, the next poll's 429 has nothing to carry: both
         // tiles render "— rate limited" — the screenshot state.
         let afterWipe = AppUsage.merged(

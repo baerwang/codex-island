@@ -61,6 +61,15 @@ enum ClaudeCredentials {
         isReauthActionable(usage.fiveHour.error) && isReauthActionable(usage.weekly.error)
     }
 
+    /// True when BOTH windows carry specifically the expired-token error —
+    /// the one terminal failure a spawned CLI ping can fix. A refresh
+    /// re-issues the same scope set, so `reauthRequiredMessage` (missing
+    /// scope) needs a real `claude /login` instead and must never ping.
+    static func isExpiredTokenFailure(_ usage: AppUsage) -> Bool {
+        usage.fiveHour.error == tokenExpiredMessage
+            && usage.weekly.error == tokenExpiredMessage
+    }
+
     /// Outcome of a single usage-endpoint probe against one token. The fetcher
     /// owns the HTTP + parsing and reports back through this; `ClaudeCredentials`
     /// interprets it to decide whether to advance to the next token source.
@@ -502,6 +511,42 @@ enum ClaudeCredentials {
             return true
         } catch {
             NSLog("CodexIsland: failed to spawn claude auth login: %@", error.localizedDescription)
+            return false
+        }
+    }
+
+    /// Detached `claude -p` ping run only for its side effect: the CLI
+    /// refreshes an expired access token before answering and writes the
+    /// rotated pair back to its credential store, which the credential-store
+    /// watch then picks up within seconds. The app itself stays strictly
+    /// read-only against the token family — the CLI remains the single
+    /// legitimate refresher; this just makes "run claude" happen without the
+    /// user. Needed because desktop-app Claude Code injects its own
+    /// host-refreshed CLAUDE_CODE_OAUTH_TOKEN and never maintains the CLI
+    /// store, so on desktop-only days the keychain token dies ~8h after the
+    /// last terminal run and stays dead.
+    ///
+    /// Cost + safety bounds: haiku model, `--strict-mcp-config` with no
+    /// config (zero MCP servers spawned), no tool grants, cwd pinned to
+    /// $HOME, stdio detached. Reaches only subscription-OAuth logins by
+    /// construction — the expired-token failure only arises from
+    /// `claudeAiOauth` candidates, so console/API-key users can never be
+    /// billed by it.
+    @discardableResult
+    static func spawnTokenRefreshPing() -> Bool {
+        guard let path = locateClaudeBinary() else { return false }
+        let task = Process()
+        task.launchPath = path
+        task.arguments = ["-p", "ok", "--model", "haiku", "--strict-mcp-config"]
+        task.currentDirectoryPath = NSHomeDirectory()
+        task.standardOutput = Pipe()
+        task.standardError = Pipe()
+        task.standardInput = Pipe()
+        do {
+            try task.run()
+            return true
+        } catch {
+            NSLog("CodexIsland: failed to spawn claude token-refresh ping: %@", error.localizedDescription)
             return false
         }
     }
