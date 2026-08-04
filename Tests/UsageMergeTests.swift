@@ -94,6 +94,46 @@ struct UsageMergeTests {
         expect(mixed.fiveHour.usedPercent == 0.16, "failed 5h carries forward")
         expect(mixed.weekly.usedPercent == 0.44, "successful weekly takes the fresh value")
 
+        // MARK: unreported windows — a parsed omission displaces, a failure carries
+
+        // The sentinel is only the zero-percent "no data" shape. A history
+        // seed wears the same caption over a real percentage — still a
+        // reading — and fetch failures carry their own messages.
+        expect(WindowUsage.unknown.isUnreported, "the parse-omission sentinel is unreported")
+        expect(
+            !WindowUsage(usedPercent: 0.40, resetAt: nil, error: "no data").isUnreported,
+            "a history seed is a reading, not an unreported window"
+        )
+        expect(!errored("rate limited").isUnreported, "a failed fetch is not an unreported window")
+
+        // Single-window Codex plans (mid-2026): the parsed response reports
+        // only weekly; the 5h slot comes back as the sentinel. A prior 5h
+        // seed — mislabeled weekly data recorded by pre-fix builds, with no
+        // resetAt to ever release it — must be displaced, not carried. This
+        // was the frozen "40% · 5h" tile on the upgrade path (#69 review).
+        let seeded = pair(
+            WindowUsage(usedPercent: 0.40, resetAt: nil, error: "no data"),
+            reading(0.11, resetIn: 5 * 86400)
+        )
+        let weeklyOnly = pair(.unknown, reading(0.40, resetIn: 3 * 86400))
+        let displaced = AppUsage.merged(fetched: weeklyOnly, retaining: seeded, at: now)
+        expect(!displaced.fiveHour.hasReading, "unreported 5h displaces the stale seed")
+        expect(
+            displaced.fiveHour.error == WindowUsage.unknown.error,
+            "displaced window keeps the passive sentinel caption"
+        )
+        expect(displaced.weekly.usedPercent == 0.40, "reported weekly takes the fresh value")
+
+        // The displacement must not weaken failure retention: the same
+        // seeded value still survives a genuinely failed fetch.
+        let seedThroughFailure = AppUsage.merged(
+            fetched: pair(errored("http 500"), errored("http 500")), retaining: seeded, at: now
+        )
+        expect(
+            seedThroughFailure.fiveHour.usedPercent == 0.40,
+            "a real failure still carries the seeded reading"
+        )
+
         // MARK: window spans bound how long a recorded reading stays usable
 
         expect(UsageWindow.fiveHour.span == 5 * 3600, "5h span is five hours")
