@@ -147,7 +147,15 @@ final class UsageStore: ObservableObject {
             // captioned with what went wrong. A window with nothing to carry
             // stays at `hasReading == false`, which the UI renders as "—"
             // instead of the fabricated 0% it used to show.
-            self.codex = AppUsage.merged(fetched: c, retaining: self.codex, at: now)
+            // Post-merge refill: a transient failure landing on windows with
+            // nothing to carry (post-wake: the expiry wipe cleared them, the
+            // recovered token's first probe hit the wake-burst 429) blanked
+            // the tiles for the whole 15-min cooldown. History still has the
+            // pre-sleep readings — show them under the failure caption, the
+            // same stale-but-true contract as the launch seed.
+            self.codex = UsageStore.seeded(
+                AppUsage.merged(fetched: c, retaining: self.codex, at: now),
+                provider: .codex, fillUnreported: false)
             if let cl {
                 if UsageStore.isRateLimited(cl) {
                     self.claudeCooldownUntil = Date().addingTimeInterval(UsageStore.rateLimitCooldown)
@@ -162,9 +170,15 @@ final class UsageStore: ObservableObject {
                 // `ChartsBlock` keys the re-auth prompt off the error-only
                 // shape. Transient errors (429/network) still carry forward.
                 let terminal = ClaudeCredentials.isTerminalAuthFailure(cl)
+                // Terminal failures keep the bare error-only shape — the
+                // re-auth panel keys off it, and seeding numbers under it
+                // would suppress the prompt. Transient failures refill like
+                // codex above.
                 self.claude = terminal
                     ? cl
-                    : AppUsage.merged(fetched: cl, retaining: self.claude, at: now)
+                    : UsageStore.seeded(
+                        AppUsage.merged(fetched: cl, retaining: self.claude, at: now),
+                        provider: .claude, fillUnreported: false)
                 // "token expired" outlives its cause by up to a full poll
                 // interval: Claude Code rotates the token seconds after the
                 // user runs it, but the next scheduled poll is 5–30 min out.
@@ -214,13 +228,21 @@ final class UsageStore: ObservableObject {
     /// seed the first failed fetch has nothing to carry and every tile falls
     /// to "—" for the whole cooldown.
     private func seedFromHistory() {
-        claude = UsageStore.seeded(claude, provider: .claude)
-        codex = UsageStore.seeded(codex, provider: .codex)
+        claude = UsageStore.seeded(claude, provider: .claude, fillUnreported: true)
+        codex = UsageStore.seeded(codex, provider: .codex, fillUnreported: true)
     }
 
-    private static func seeded(_ current: AppUsage, provider: AlertEngine.Provider) -> AppUsage {
+    /// `fillUnreported`: at launch the passive "no data" sentinel just means
+    /// "nothing fetched yet", so history may paint it. After a fetch it
+    /// means the provider omitted the window from a parsed response
+    /// (single-window Codex plans) — refilling would resurrect exactly the
+    /// frozen mislabeled reading the span-routing fix displaces, so the
+    /// mid-run refill path leaves those alone.
+    private static func seeded(_ current: AppUsage, provider: AlertEngine.Provider,
+                               fillUnreported: Bool) -> AppUsage {
         func fill(_ kind: UsageWindow, _ existing: WindowUsage) -> WindowUsage {
             guard !existing.hasReading,
+                  fillUnreported || existing.error != WindowUsage.unknown.error,
                   let sample = UsageHistoryStore.shared.latestReading(
                       provider: provider, window: kind)
             else { return existing }
