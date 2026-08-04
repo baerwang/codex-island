@@ -1,0 +1,115 @@
+import Foundation
+
+/// Regression cover for the dead Codex "week" tile (2026-07 onward).
+///
+/// `wham/usage` stopped being positional: plans with a single weekly limit
+/// report it as `primary_window` with `limit_window_seconds: 604800` and
+/// `secondary_window: null`. The old primary→5h / secondary→weekly mapping
+/// rendered the weekly reading in the 5h tile and a permanent "—" in the
+/// weekly one. Routing must go by the window's advertised span, with slot
+/// order as the fallback for older shapes that omit `limit_window_seconds`.
+@main
+struct CodexWindowRoutingTests {
+    static var failures = 0
+
+    static func expect(_ condition: Bool, _ label: String) {
+        if condition { print("PASS \(label)") } else { print("FAIL \(label)"); failures += 1 }
+    }
+
+    /// All fixtures go through JSONSerialization — production numbers arrive
+    /// as NSNumber, whose `as? Double` bridging native Swift literals don't share.
+    static func parse(_ json: String) -> [String: Any] {
+        try! JSONSerialization.jsonObject(with: Data(json.utf8)) as! [String: Any]
+    }
+
+    static func rateLimit(fromResponse json: String) -> [String: Any] {
+        parse(json)["rate_limit"] as! [String: Any]
+    }
+
+    /// The live response observed 2026-08-04 (identifiers redacted): one
+    /// window, weekly span, in the primary slot.
+    static let weeklyOnlyResponse = """
+    {
+      "plan_type": "plus",
+      "rate_limit": {
+        "allowed": true,
+        "limit_reached": false,
+        "primary_window": {
+          "used_percent": 40,
+          "limit_window_seconds": 604800,
+          "reset_after_seconds": 332661,
+          "reset_at": 1786161248
+        },
+        "secondary_window": null
+      },
+      "credits": { "has_credits": false, "unlimited": false }
+    }
+    """
+
+    /// The original two-window shape older accounts may still get.
+    static let twoWindowResponse = """
+    {
+      "plan_type": "plus",
+      "rate_limit": {
+        "primary_window": {
+          "used_percent": 12,
+          "limit_window_seconds": 18000,
+          "reset_at": 1786000000
+        },
+        "secondary_window": {
+          "used_percent": 34,
+          "limit_window_seconds": 604800,
+          "reset_at": 1786161248
+        }
+      }
+    }
+    """
+
+    static func main() {
+        // MARK: the live 2026-08 shape — weekly lives in the primary slot
+
+        let weeklyOnly = UsageFetcher.routeCodexWindows(rateLimit(fromResponse: weeklyOnlyResponse))
+        expect(weeklyOnly.weekly.usedPercent == 0.40, "weekly takes the 604800s primary window")
+        expect(
+            weeklyOnly.weekly.resetAt == Date(timeIntervalSince1970: 1_786_161_248),
+            "weekly keeps the window's reset_at"
+        )
+        expect(weeklyOnly.weekly.hasReading, "weekly counts as a real reading")
+        expect(!weeklyOnly.fiveHour.hasReading, "unreported 5h window has no reading")
+        expect(
+            weeklyOnly.fiveHour.error == "no data",
+            "unreported 5h carries the passive `no data` sentinel, not a fetch error"
+        )
+
+        // MARK: the original two-window shape still routes by span
+
+        let both = UsageFetcher.routeCodexWindows(rateLimit(fromResponse: twoWindowResponse))
+        expect(both.fiveHour.usedPercent == 0.12, "18000s primary window lands in 5h")
+        expect(both.weekly.usedPercent == 0.34, "604800s secondary window lands in weekly")
+
+        // MARK: shapes without limit_window_seconds fall back to slot order
+
+        let legacy = UsageFetcher.routeCodexWindows(parse("""
+        {
+          "primary_window": { "used_percent": 7, "reset_at": 1786000000 },
+          "secondary_window": { "used_percent": 21 }
+        }
+        """))
+        expect(legacy.fiveHour.usedPercent == 0.07, "spanless primary defaults to 5h")
+        expect(legacy.weekly.usedPercent == 0.21, "spanless secondary defaults to weekly")
+
+        // MARK: a lone 5h-span window leaves weekly unreported, not errored
+
+        let fiveHourOnly = UsageFetcher.routeCodexWindows(parse("""
+        {
+          "primary_window": { "used_percent": 55, "limit_window_seconds": 18000 },
+          "secondary_window": null
+        }
+        """))
+        expect(fiveHourOnly.fiveHour.usedPercent == 0.55, "lone 18000s window lands in 5h")
+        expect(!fiveHourOnly.weekly.hasReading, "weekly stays a no-reading window")
+
+        print(failures == 0 ? "ALL PASS" : "\(failures) FAILURE(S)")
+        exit(failures == 0 ? 0 : 1)
+    }
+}
