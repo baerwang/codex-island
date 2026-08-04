@@ -101,6 +101,7 @@
 "Ring" = "Ring";
 "scanning local logs…" = "scanning local logs…";
 "Settings" = "Settings";
+"Switch to %@ (⌘%d)" = "Switch to %@ (⌘%d)";
 "Show on" = "Show on";
 "Sparkline" = "Sparkline";
 "Spacing" = "Spacing";
