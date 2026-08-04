@@ -177,8 +177,11 @@ final class UsageStore: ObservableObject {
                     // Claude Code brings its own host-refreshed token and
                     // never writes the CLI store). The ping's writeback is
                     // what the credential watch then catches.
-                    if ClaudeCredentials.isExpiredTokenFailure(cl),
-                       !self.tokenRefreshPingAttempted, !self.claudeReauthInProgress {
+                    if ClaudeCredentials.shouldSpawnRefreshPing(
+                        for: cl,
+                        alreadyAttempted: self.tokenRefreshPingAttempted,
+                        reauthInProgress: self.claudeReauthInProgress
+                    ) {
                         self.tokenRefreshPingAttempted = true
                         ClaudeCredentials.spawnTokenRefreshPing()
                     }
@@ -329,6 +332,12 @@ final class UsageStore: ObservableObject {
                         self?.claude = cl
                         self?.lastUpdated = Date()
                         self?.claudeReauthInProgress = false
+                        // This poll owned the store write — retire the
+                        // credential watch (its baseline is stale now) and
+                        // re-arm the ping for the next expiry episode.
+                        self?.credWatchTask?.cancel()
+                        self?.credWatchTask = nil
+                        self?.tokenRefreshPingAttempted = false
                     }
                     return
                 }
@@ -424,8 +433,15 @@ final class UsageStore: ObservableObject {
                 forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
             ) { [weak self] _ in
                 Task { @MainActor [weak self] in
-                    self?.armTimer()
-                    self?.deferPostWakeRefresh()
+                    guard let self else { return }
+                    // Re-arm only when the scheduled fire was slept through.
+                    // A sub-interval nap keeps its pending cadence — an
+                    // unconditional re-arm silently postponed the next poll
+                    // by a full interval on every lid flip.
+                    if self.nextExpectedFire.map({ Date() >= $0 }) ?? true {
+                        self.armTimer()
+                    }
+                    self.deferPostWakeRefresh()
                 }
             },
         ]
@@ -437,10 +453,14 @@ final class UsageStore: ObservableObject {
     /// undercut the 5-minute floor. The freshness recheck inside the task
     /// also collapses the didWake/catch-up overlap into a single probe.
     private func deferPostWakeRefresh() {
+        // The grace window arms on EVERY wake — even when no off-schedule
+        // refresh is warranted — so the network monitor's transition refresh
+        // (Wi-Fi re-associating seconds after the lid opens) never probes
+        // into the wake burst either.
+        wakeGraceUntil = Date().addingTimeInterval(WakeScheduling.graceDelay)
         guard WakeScheduling.shouldRefreshAfterWake(
             lastPoll: lastUpdated, now: Date(), pollInterval: pollInterval
         ) else { return }
-        wakeGraceUntil = Date().addingTimeInterval(WakeScheduling.graceDelay)
         wakeRefreshTask?.cancel()
         wakeRefreshTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(WakeScheduling.graceDelay * 1_000_000_000))
@@ -469,17 +489,25 @@ final class UsageStore: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard !Task.isCancelled else { break }
+                guard let self else { return }
+                // The in-app re-auth poll owns the flow while it runs —
+                // reacting here too would double-probe the usage endpoint
+                // on the same store write.
+                if self.claudeReauthInProgress { continue }
                 if ClaudeCredentials.credentialStoreFingerprint() != baseline {
                     ClaudeCredentials.clearCache()
-                    guard let self else { return }
                     self.credWatchTask = nil
+                    await self.waitOutWakeGrace()
+                    if Task.isCancelled { return }
                     self.refreshTask?.cancel()
                     await self.refreshTask?.value
                     if !Task.isCancelled { self.refresh() }
                     return
                 }
             }
-            self?.credWatchTask = nil
+            // Deliberately no cleanup on the cancelled path: cancellers nil
+            // the property themselves, and nilling here would clobber a
+            // successor watch's reference.
         }
     }
 
@@ -493,10 +521,26 @@ final class UsageStore: ObservableObject {
             let delay = UsageStore.rateLimitCooldown + 10
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }
+            await self.waitOutWakeGrace()
+            guard !Task.isCancelled else { return }
             self.cooldownRetryTask = nil
             self.refreshTask?.cancel()
             await self.refreshTask?.value
             if !Task.isCancelled { self.refresh() }
+        }
+    }
+
+    /// One-shot recovery tasks sleep on `Task.sleep`, whose deadline keeps
+    /// elapsing through system sleep — so a pending retry can otherwise fire
+    /// in the first post-wake seconds, probing the exact burst the wake
+    /// grace exists to dodge (and its failed attempt would then satisfy the
+    /// wake refresh's freshness check). Hold until the grace passes; loops
+    /// in case another wake re-arms the grace mid-wait.
+    private func waitOutWakeGrace() async {
+        while let grace = wakeGraceUntil, !Task.isCancelled {
+            let remaining = grace.timeIntervalSinceNow
+            guard remaining > 0 else { return }
+            try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
         }
     }
 

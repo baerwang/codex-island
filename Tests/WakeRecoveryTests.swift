@@ -61,6 +61,14 @@ struct WakeRecoveryTests {
             !WakeScheduling.isOverdueFire(now: now, expected: nil),
             "no armed schedule means nothing to be overdue against"
         )
+        expect(
+            !WakeScheduling.isOverdueFire(now: now.addingTimeInterval(120), expected: expected),
+            "exactly at the slack boundary is still ordinary jitter"
+        )
+        // Pin the constants themselves: a tenfold typo in either would pass
+        // every behavioral case above.
+        expect(WakeScheduling.overdueSlack == 120, "overdue slack is two minutes")
+        expect(WakeScheduling.graceDelay == 60, "wake grace is one minute")
 
         // MARK: wake-refresh gating — long sleeps refresh, lid flips don't
 
@@ -77,6 +85,11 @@ struct WakeRecoveryTests {
             WakeScheduling.shouldRefreshAfterWake(
                 lastPoll: now.addingTimeInterval(-6 * 3600), now: now, pollInterval: 1800),
             "an overnight sleep refreshes even on the 30m preset"
+        )
+        expect(
+            WakeScheduling.shouldRefreshAfterWake(
+                lastPoll: now.addingTimeInterval(-300), now: now, pollInterval: 300),
+            "exactly one interval of staleness refreshes"
         )
 
         // MARK: the defect being defended against — the blank "— rate limited" pair
@@ -137,6 +150,30 @@ struct WakeRecoveryTests {
         expect(
             !ClaudeCredentials.isExpiredTokenFailure(rateLimited),
             "a 429 pair must never ping — it would feed the tripped limiter"
+        )
+
+        // The full gate the store consults before spawning — the billing
+        // safety invariant. A regression that respawned the ping every poll
+        // (silently spending quota) has to fail here.
+        expect(
+            ClaudeCredentials.shouldSpawnRefreshPing(
+                for: tokenExpired, alreadyAttempted: false, reauthInProgress: false),
+            "fresh expiry episode with no re-auth running spawns the one ping"
+        )
+        expect(
+            !ClaudeCredentials.shouldSpawnRefreshPing(
+                for: tokenExpired, alreadyAttempted: true, reauthInProgress: false),
+            "an episode that already pinged never pings again"
+        )
+        expect(
+            !ClaudeCredentials.shouldSpawnRefreshPing(
+                for: tokenExpired, alreadyAttempted: false, reauthInProgress: true),
+            "the re-auth flow owns the store — no ping under it"
+        )
+        expect(
+            !ClaudeCredentials.shouldSpawnRefreshPing(
+                for: rateLimited, alreadyAttempted: false, reauthInProgress: false),
+            "only the expired-token shape can ever reach the spawn"
         )
 
         // After the wipe, the next poll's 429 has nothing to carry: both

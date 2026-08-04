@@ -70,6 +70,17 @@ enum ClaudeCredentials {
             && usage.weekly.error == tokenExpiredMessage
     }
 
+    /// Full gating for the refresh ping: the ping-fixable failure shape AND
+    /// not already attempted this expiry episode AND no re-auth flow owning
+    /// the store. Pure so the test harness can pin the billing-safety
+    /// invariant — a regression that respawned the ping every poll would
+    /// otherwise pass the suite silently.
+    static func shouldSpawnRefreshPing(
+        for usage: AppUsage, alreadyAttempted: Bool, reauthInProgress: Bool
+    ) -> Bool {
+        isExpiredTokenFailure(usage) && !alreadyAttempted && !reauthInProgress
+    }
+
     /// Outcome of a single usage-endpoint probe against one token. The fetcher
     /// owns the HTTP + parsing and reports back through this; `ClaudeCredentials`
     /// interprets it to decide whether to advance to the next token source.
@@ -539,9 +550,22 @@ enum ClaudeCredentials {
         task.launchPath = path
         task.arguments = ["-p", "ok", "--model", "haiku", "--strict-mcp-config"]
         task.currentDirectoryPath = NSHomeDirectory()
-        task.standardOutput = Pipe()
-        task.standardError = Pipe()
-        task.standardInput = Pipe()
+        // Deterministic auth path: the ping exists to refresh the KEYCHAIN
+        // login and must never bill anything. Drop the env overrides that
+        // would route the CLI to API-key billing or to an injected token
+        // that bypasses the keychain writeback (app launched from a shell
+        // that exports them).
+        var env = ProcessInfo.processInfo.environment
+        for key in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"] {
+            env.removeValue(forKey: key)
+        }
+        task.environment = env
+        // Null device, not pipes: a pipe nobody drains wedges a chatty child
+        // forever at the 64KB buffer and the Process self-retains — the null
+        // device can't block, so no lingering process to leak.
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        task.standardInput = FileHandle.nullDevice
         do {
             try task.run()
             return true
