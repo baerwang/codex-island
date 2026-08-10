@@ -246,15 +246,12 @@ final class UsageStore: ObservableObject {
     private static func seeded(_ current: AppUsage, prior: AppUsage? = nil,
                                provider: AlertEngine.Provider,
                                fillUnreported: Bool) -> AppUsage {
-        func isSentinel(_ w: WindowUsage) -> Bool {
-            !w.hasReading && w.error == WindowUsage.unknown.error
-        }
         func fill(_ kind: UsageWindow, _ existing: WindowUsage,
                   _ priorWindow: WindowUsage?) -> WindowUsage {
             guard !existing.hasReading else { return existing }
             if !fillUnreported {
-                if isSentinel(existing) { return existing }
-                if let priorWindow, isSentinel(priorWindow) { return existing }
+                if existing.isUnreported { return existing }
+                if let priorWindow, priorWindow.isUnreported { return existing }
             }
             guard let sample = UsageHistoryStore.shared.latestReading(
                 provider: provider, window: kind)
