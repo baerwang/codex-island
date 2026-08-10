@@ -40,6 +40,15 @@ struct WindowUsage {
     /// attached. That still counts as a reading.
     var hasReading: Bool { !(error != nil && usedPercent == 0) }
 
+    /// True for the passive sentinel a successfully parsed response leaves on
+    /// a window it doesn't include (`WindowUsage.unknown`) — the provider
+    /// affirmatively not offering the window, as opposed to a fetch failure,
+    /// whose error carries the failure message. `merged` treats the two
+    /// differently: a failure preserves the prior reading; an unreported
+    /// window displaces it. A history seed also wears the "no data" caption
+    /// but with a real percentage, so it stays a reading, not this.
+    var isUnreported: Bool { !hasReading && error == WindowUsage.unknown.error }
+
     var percentInt: Int { Int((usedPercent * 100).rounded()) }
 
     func displayedFraction(mode: UsageDisplayMode) -> Double {
@@ -98,6 +107,12 @@ struct AppUsage {
         _ fetched: WindowUsage, prior: WindowUsage, at now: Date
     ) -> WindowUsage {
         guard !fetched.hasReading, prior.hasReading else { return fetched }
+        // A parsed response that omits the window is the provider saying the
+        // plan doesn't have one (single-window Codex plans, mid-2026) —
+        // displace the prior reading rather than papering over it. Carrying
+        // here froze a mislabeled history seed forever: seeds have no
+        // resetAt, so the release below could never fire.
+        if fetched.isUnreported { return fetched }
         if let reset = prior.resetAt, reset <= now { return fetched }
         return WindowUsage(
             usedPercent: prior.usedPercent, resetAt: prior.resetAt, error: fetched.error
