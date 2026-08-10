@@ -153,9 +153,10 @@ final class UsageStore: ObservableObject {
             // the tiles for the whole 15-min cooldown. History still has the
             // pre-sleep readings — show them under the failure caption, the
             // same stale-but-true contract as the launch seed.
+            let priorCodex = self.codex
             self.codex = UsageStore.seeded(
-                AppUsage.merged(fetched: c, retaining: self.codex, at: now),
-                provider: .codex, fillUnreported: false)
+                AppUsage.merged(fetched: c, retaining: priorCodex, at: now),
+                prior: priorCodex, provider: .codex, fillUnreported: false)
             if let cl {
                 if UsageStore.isRateLimited(cl) {
                     self.claudeCooldownUntil = Date().addingTimeInterval(UsageStore.rateLimitCooldown)
@@ -174,11 +175,12 @@ final class UsageStore: ObservableObject {
                 // re-auth panel keys off it, and seeding numbers under it
                 // would suppress the prompt. Transient failures refill like
                 // codex above.
+                let priorClaude = self.claude
                 self.claude = terminal
                     ? cl
                     : UsageStore.seeded(
-                        AppUsage.merged(fetched: cl, retaining: self.claude, at: now),
-                        provider: .claude, fillUnreported: false)
+                        AppUsage.merged(fetched: cl, retaining: priorClaude, at: now),
+                        prior: priorClaude, provider: .claude, fillUnreported: false)
                 // "token expired" outlives its cause by up to a full poll
                 // interval: Claude Code rotates the token seconds after the
                 // user runs it, but the next scheduled poll is 5–30 min out.
@@ -237,22 +239,33 @@ final class UsageStore: ObservableObject {
     /// means the provider omitted the window from a parsed response
     /// (single-window Codex plans) — refilling would resurrect exactly the
     /// frozen mislabeled reading the span-routing fix displaces, so the
-    /// mid-run refill path leaves those alone.
-    private static func seeded(_ current: AppUsage, provider: AlertEngine.Provider,
+    /// mid-run refill path leaves those alone. That check runs against the
+    /// PRIOR window too: a transient failure replaces the sentinel's caption
+    /// with its own, and judging only the merged shape would re-open the
+    /// refill door on every failed poll.
+    private static func seeded(_ current: AppUsage, prior: AppUsage? = nil,
+                               provider: AlertEngine.Provider,
                                fillUnreported: Bool) -> AppUsage {
-        func fill(_ kind: UsageWindow, _ existing: WindowUsage) -> WindowUsage {
-            guard !existing.hasReading,
-                  fillUnreported || existing.error != WindowUsage.unknown.error,
-                  let sample = UsageHistoryStore.shared.latestReading(
-                      provider: provider, window: kind)
+        func isSentinel(_ w: WindowUsage) -> Bool {
+            !w.hasReading && w.error == WindowUsage.unknown.error
+        }
+        func fill(_ kind: UsageWindow, _ existing: WindowUsage,
+                  _ priorWindow: WindowUsage?) -> WindowUsage {
+            guard !existing.hasReading else { return existing }
+            if !fillUnreported {
+                if isSentinel(existing) { return existing }
+                if let priorWindow, isSentinel(priorWindow) { return existing }
+            }
+            guard let sample = UsageHistoryStore.shared.latestReading(
+                provider: provider, window: kind)
             else { return existing }
             // No resetAt: the sample never carried one, and inventing a
             // countdown from a stored percentage would be a second fiction.
             return WindowUsage(usedPercent: sample.used, resetAt: nil, error: existing.error)
         }
         return AppUsage(
-            fiveHour: fill(.fiveHour, current.fiveHour),
-            weekly: fill(.weekly, current.weekly),
+            fiveHour: fill(.fiveHour, current.fiveHour, prior?.fiveHour),
+            weekly: fill(.weekly, current.weekly, prior?.weekly),
             plan: current.plan
         )
     }
@@ -425,6 +438,12 @@ final class UsageStore: ObservableObject {
     private func timerFired() {
         if WakeScheduling.isOverdueFire(now: Date(), expected: nextExpectedFire) {
             armTimer()
+            deferPostWakeRefresh()
+        } else if let grace = wakeGraceUntil, Date() < grace {
+            // A pending fire preserved across a short nap can land inside
+            // the grace window — defer it like the catch-up fire instead of
+            // probing the still-associating network.
+            nextExpectedFire = Date().addingTimeInterval(pollInterval)
             deferPostWakeRefresh()
         } else {
             nextExpectedFire = Date().addingTimeInterval(pollInterval)
