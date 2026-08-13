@@ -547,7 +547,7 @@ private struct PeekPillOverlay: View {
     private var currentWindow: WindowUsage {
         switch provider {
         case .claude: return usageStore.claude.fiveHour
-        case .codex:  return usageStore.codex.fiveHour
+        case .codex:  return usageStore.codex.peekWindow
         }
     }
 

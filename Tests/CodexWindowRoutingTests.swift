@@ -80,12 +80,24 @@ struct CodexWindowRoutingTests {
             weeklyOnly.fiveHour.error == "no data",
             "unreported 5h carries the passive `no data` sentinel, not a fetch error"
         )
+        let weeklyOnlyUsage = AppUsage(
+            fiveHour: weeklyOnly.fiveHour,
+            weekly: weeklyOnly.weekly
+        )
+        expect(
+            weeklyOnlyUsage.peekWindow.hasReading,
+            "peek selects the reported weekly window instead of rendering an em dash"
+        )
 
         // MARK: the original two-window shape still routes by span
 
         let both = UsageFetcher.routeCodexWindows(rateLimit(fromResponse: twoWindowResponse))
         expect(both.fiveHour.usedPercent == 0.12, "18000s primary window lands in 5h")
         expect(both.weekly.usedPercent == 0.34, "604800s secondary window lands in weekly")
+        expect(
+            AppUsage(fiveHour: both.fiveHour, weekly: both.weekly).peekWindow.usedPercent == 0.12,
+            "peek continues to prefer 5h when both windows are reported"
+        )
 
         // MARK: shapes without limit_window_seconds fall back to slot order
 
