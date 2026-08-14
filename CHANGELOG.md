@@ -4,6 +4,25 @@ User-facing changes per release. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); dates are when the
 tag was cut.
 
+## [0.1.23] - 2026-08-14
+
+Weekly-only Codex plans get a real number in the peek pill instead of "—%".
+
+### Fixed
+
+- **The peek pill works on weekly-only Codex plans.** Plans that report
+  only a weekly quota (no 5-hour window) always showed "—%" on hover —
+  the pill was hard-wired to the missing 5-hour slot. It now falls back
+  to the weekly window: the remaining percentage and its multi-day
+  countdown ("34% · 6d 23h") render, VoiceOver announces it as the
+  weekly window, and the no-countdown fallback glyph reads "7d" instead
+  of "5h". Two-window plans still show the 5-hour window first.
+  Contributed by @albertloky (#75).
+- **Limit alerts follow the window you can see.** Alert severity (the
+  warning glyph and amber/red tint) tracked the 5-hour window even when
+  the peek was showing the weekly one — a weekly-only plan at 96% never
+  warned. Severity now tracks the same window the pill displays.
+
 ## [0.1.22] - 2026-08-10
 
 Waking your Mac no longer strands the Claude card on "rate limited" or
