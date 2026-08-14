@@ -518,7 +518,8 @@ private struct PeekPillOverlay: View {
             loading: usageStore.loading,
             tint: tint,
             alignment: provider == .claude ? .leading : .trailing,
-            severity: severity
+            severity: severity,
+            windowLengthFallback: currentWindowIsWeekly ? "7d" : "5h"
         )
         .padding(provider == .claude ? .leading : .trailing, 14)
         .padding(.top, topPadding)
@@ -532,7 +533,7 @@ private struct PeekPillOverlay: View {
         .animation(.openMorph, value: isVisible)
         .offset(x: pillsVisible ? 0 : (provider == .claude ? -6 : 6))
         .allowsHitTesting(false)
-        .accessibilityLabel(peekLabel(for: window, provider: providerLabel))
+        .accessibilityLabel(peekLabel(for: window, provider: providerLabel, weekly: currentWindowIsWeekly))
         // Mirror the visual opacity gate exactly — both `pillsVisible` and
         // `isVisible` must be true for the pill to render. Keying the
         // accessibility hide on only `isVisible` lets VoiceOver reach a
@@ -547,8 +548,12 @@ private struct PeekPillOverlay: View {
     private var currentWindow: WindowUsage {
         switch provider {
         case .claude: return usageStore.claude.fiveHour
-        case .codex:  return usageStore.codex.fiveHour
+        case .codex:  return usageStore.codex.peekWindow
         }
+    }
+
+    private var currentWindowIsWeekly: Bool {
+        provider == .codex && usageStore.codex.peekWindowIsWeekly
     }
 
     private var severity: AlertEngine.Severity {
@@ -572,24 +577,32 @@ private struct PeekPillOverlay: View {
         }
     }
 
-    private func peekLabel(for window: WindowUsage, provider: String) -> String {
+    private func peekLabel(for window: WindowUsage, provider: String, weekly: Bool) -> String {
         if !window.hasReading {
-            return L10n.tr("%@: no data for 5-hour window", provider)
+            return weekly
+                ? L10n.tr("%@: no data for weekly window", provider)
+                : L10n.tr("%@: no data for 5-hour window", provider)
         }
         let mode = UsageDisplayModeStore.shared.mode
         let pct = window.displayedPercentInt(mode: mode)
         guard let resetAt = window.resetAt else {
-            return mode == .used
-                ? L10n.tr("%@: %d percent of 5-hour window used", provider, pct)
-                : L10n.tr("%@: %d percent of 5-hour window remaining", provider, pct)
+            switch (mode, weekly) {
+            case (.used, false):      return L10n.tr("%@: %d percent of 5-hour window used", provider, pct)
+            case (.remaining, false): return L10n.tr("%@: %d percent of 5-hour window remaining", provider, pct)
+            case (.used, true):       return L10n.tr("%@: %d percent of weekly window used", provider, pct)
+            case (.remaining, true):  return L10n.tr("%@: %d percent of weekly window remaining", provider, pct)
+            }
         }
         let remaining = max(0, resetAt.timeIntervalSinceNow)
         let resetPhrase: String = remaining >= 3600
             ? L10n.tr("resets in %d hours", Int((remaining / 3600).rounded(.down)))
             : L10n.tr("resets in %d minutes", max(1, Int((remaining / 60).rounded(.down))))
-        return mode == .used
-            ? L10n.tr("%@: %d percent of 5-hour window used, %@", provider, pct, resetPhrase)
-            : L10n.tr("%@: %d percent of 5-hour window remaining, %@", provider, pct, resetPhrase)
+        switch (mode, weekly) {
+        case (.used, false):      return L10n.tr("%@: %d percent of 5-hour window used, %@", provider, pct, resetPhrase)
+        case (.remaining, false): return L10n.tr("%@: %d percent of 5-hour window remaining, %@", provider, pct, resetPhrase)
+        case (.used, true):       return L10n.tr("%@: %d percent of weekly window used, %@", provider, pct, resetPhrase)
+        case (.remaining, true):  return L10n.tr("%@: %d percent of weekly window remaining, %@", provider, pct, resetPhrase)
+        }
     }
 }
 

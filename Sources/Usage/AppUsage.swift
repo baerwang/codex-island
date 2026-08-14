@@ -80,6 +80,12 @@ struct AppUsage {
 
     static let empty = AppUsage(fiveHour: .unknown, weekly: .unknown)
 
+    var peekWindow: WindowUsage { fiveHour.hasReading ? fiveHour : weekly }
+
+    /// Which window `peekWindow` selected — the peek chrome (VoiceOver label,
+    /// window-length fallback glyph) must describe the same window it shows.
+    var peekWindowIsWeekly: Bool { !fiveHour.hasReading }
+
     /// Fold a fetch result into the values currently on screen.
     ///
     /// Per window: a fresh reading wins outright. A failed window keeps the
