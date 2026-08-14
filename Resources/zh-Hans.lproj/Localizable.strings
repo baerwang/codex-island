@@ -140,6 +140,11 @@
 "%@: %d percent of 5-hour window used" = "%@：已使用 5 小时窗口的 %d%%";
 "%@: %d percent of 5-hour window used, %@" = "%@：已使用 5 小时窗口的 %d%%，%@";
 "%@: no data for 5-hour window" = "%@：5 小时窗口暂无数据";
+"%@: %d percent of weekly window remaining" = "%@：每周窗口剩余 %d%%";
+"%@: %d percent of weekly window remaining, %@" = "%@：每周窗口剩余 %d%%，%@";
+"%@: %d percent of weekly window used" = "%@：已使用每周窗口的 %d%%";
+"%@: %d percent of weekly window used, %@" = "%@：已使用每周窗口的 %d%%，%@";
+"%@: no data for weekly window" = "%@：每周窗口暂无数据";
 "Click to expand. Command-click to cycle visualization." = "点击展开。Command 点击可切换可视化。";
 "Command-click to cycle visualization." = "Command 点击可切换可视化。";
 "Hover to peek usage. Click to expand. Command-click to cycle visualization." = "悬停预览用量。点击展开。Command 点击可切换可视化。";

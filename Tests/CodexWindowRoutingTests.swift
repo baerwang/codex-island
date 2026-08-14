@@ -88,6 +88,10 @@ struct CodexWindowRoutingTests {
             weeklyOnlyUsage.peekWindow.hasReading,
             "peek selects the reported weekly window instead of rendering an em dash"
         )
+        expect(
+            weeklyOnlyUsage.peekWindowIsWeekly,
+            "peek chrome knows the weekly window was selected (a11y label, 7d fallback)"
+        )
 
         // MARK: the original two-window shape still routes by span
 
@@ -97,6 +101,10 @@ struct CodexWindowRoutingTests {
         expect(
             AppUsage(fiveHour: both.fiveHour, weekly: both.weekly).peekWindow.usedPercent == 0.12,
             "peek continues to prefer 5h when both windows are reported"
+        )
+        expect(
+            !AppUsage(fiveHour: both.fiveHour, weekly: both.weekly).peekWindowIsWeekly,
+            "peek chrome describes the 5h window on two-window plans"
         )
 
         // MARK: shapes without limit_window_seconds fall back to slot order

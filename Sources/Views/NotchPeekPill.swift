@@ -18,6 +18,10 @@ struct NotchPeekPill: View {
     let tint: Color
     let alignment: HorizontalAlignment
     var severity: AlertEngine.Severity = .none
+    /// Window-length glyph shown when no active countdown is known — must
+    /// match the window actually displayed ("5h", or "7d" for the Codex
+    /// weekly fallback on weekly-only plans).
+    var windowLengthFallback: String = "5h"
     @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
 
     var body: some View {
@@ -75,7 +79,7 @@ struct NotchPeekPill: View {
     /// window" label from an active "5h until reset" countdown — same
     /// glyph shape, weaker visual presence.
     private var resetLabel: some View {
-        Text(resetText ?? "5h")
+        Text(resetText ?? windowLengthFallback)
             .font(Typography.bodyNumber)
             .foregroundStyle(.white.opacity(resetText == nil ? 0.45 : 0.70))
     }

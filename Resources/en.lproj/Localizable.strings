@@ -140,6 +140,11 @@
 "%@: %d percent of 5-hour window used" = "%@: %d percent of 5-hour window used";
 "%@: %d percent of 5-hour window used, %@" = "%@: %d percent of 5-hour window used, %@";
 "%@: no data for 5-hour window" = "%@: no data for 5-hour window";
+"%@: %d percent of weekly window remaining" = "%@: %d percent of weekly window remaining";
+"%@: %d percent of weekly window remaining, %@" = "%@: %d percent of weekly window remaining, %@";
+"%@: %d percent of weekly window used" = "%@: %d percent of weekly window used";
+"%@: %d percent of weekly window used, %@" = "%@: %d percent of weekly window used, %@";
+"%@: no data for weekly window" = "%@: no data for weekly window";
 "Click to expand. Command-click to cycle visualization." = "Click to expand. Command-click to cycle visualization.";
 "Command-click to cycle visualization." = "Command-click to cycle visualization.";
 "Hover to peek usage. Click to expand. Command-click to cycle visualization." = "Hover to peek usage. Click to expand. Command-click to cycle visualization.";
