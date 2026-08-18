@@ -2,20 +2,18 @@ import SwiftUI
 
 /// Page indicator that mirrors the active screen. Sits in the
 /// expanded panel footer between the style chip and the live-status group.
-/// Each dot sits inside a 24pt button so regular-mouse users do not need
-/// pixel-precise aim. The visible dots stay compact and quiet.
+/// Each dot is tappable so regular-mouse users (no trackpad swipe, no
+/// horizontal wheel) have a click-to-page affordance.
 struct PageIndicator: View {
     @ObservedObject var model: IslandModel
     @ObservedObject private var screenPref = ScreenPref.shared
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 5) {
             ForEach(ScreenPref.Screen.allCases, id: \.self) { screen in
                 dot(for: screen)
             }
         }
-        .padding(.horizontal, 2)
-        .contentShape(Rectangle())
         .animation(.strongEaseOut, value: screenPref.screen)
     }
 
@@ -25,16 +23,17 @@ struct PageIndicator: View {
             model.showScreen(screen)
         } label: {
             Circle()
-                .fill(.white.opacity(isActive ? 0.82 : 0.25))
-                .frame(width: isActive ? 8 : 7, height: isActive ? 8 : 7)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
+                .fill(.white.opacity(isActive ? 0.78 : 0.22))
+                .frame(width: 5, height: 5)
+                // Visual stays 5pt; hit area expands ~6pt outward so the dot
+                // is reachable without pixel-precise aim.
+                .contentShape(Rectangle().inset(by: -6))
         }
-            .buttonStyle(.plain)
-            .help(L10n.tr("Switch to %@ (⌘%d)", screen.pageLabel, screen.pageIndex + 1))
-            .accessibilityLabel(accessibilityLabel(for: screen))
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAddTraits(isActive ? .isSelected : [])
+        .buttonStyle(.plain)
+        .help(L10n.tr("Switch to %@ (⌘%d)", screen.pageLabel, screen.pageIndex + 1))
+        .accessibilityLabel(accessibilityLabel(for: screen))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     private func accessibilityLabel(for screen: ScreenPref.Screen) -> String {
