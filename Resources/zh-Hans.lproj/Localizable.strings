@@ -101,6 +101,7 @@
 "Ring" = "环形";
 "scanning local logs…" = "正在扫描本地日志…";
 "Settings" = "设置";
+"Switch to %@ (⌘%d)" = "切换到%@（⌘%d）";
 "Show on" = "显示在";
 "Sparkline" = "折线";
 "Spacing" = "间距";
