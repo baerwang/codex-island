@@ -135,7 +135,7 @@ struct IslandRootView: View {
                         switch ScreenPref.shared.screen {
                         case .usage: StylePref.shared.cycle()
                         case .cost:  CostStylePref.shared.cycle()
-                        case .quota, .models, .overview: return
+                        case .models, .overview: return
                         }
                         return
                     }
@@ -353,7 +353,7 @@ struct IslandRootView: View {
                 : L10n.tr("Hover to peek usage. Click to expand. Command-click to cycle visualization.")
         case .peek:     return L10n.tr("Click to expand. Command-click to cycle visualization.")
         case .expanded:
-            return ScreenPref.shared.screen == .quota || ScreenPref.shared.screen == .models || ScreenPref.shared.screen == .overview
+            return ScreenPref.shared.screen == .models || ScreenPref.shared.screen == .overview
                 ? L10n.tr("Swipe to change pages.")
                 : L10n.tr("Command-click to cycle visualization.")
         }

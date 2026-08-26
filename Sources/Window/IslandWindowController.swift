@@ -161,7 +161,7 @@ final class IslandWindowController {
 
         if modifiers == .command,
            let character = event.charactersIgnoringModifiers,
-           let index = ["1", "2", "3", "4", "5"].firstIndex(of: character) {
+           let index = ["1", "2", "3", "4"].firstIndex(of: character) {
             model.showScreen(ScreenPref.Screen.allCases[index])
             return nil
         }

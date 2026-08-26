@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Five-page horizontal carousel: live usage, full quota details, cost, model breakdown, and
+/// Four-page horizontal carousel: live usage, cost, model breakdown, and
 /// history overview. Each page renders at the full content width;
 /// the HStack slides via `.offset` based on
 /// `ScreenPref.screen`. Horizontal movement gets its own drawer-style curve
@@ -24,9 +24,6 @@ struct PagedContent: View {
             let pageWidth = geo.size.width
             HStack(spacing: 0) {
                 UsageView()
-                    .offset(y: compactPageYOffset)
-                    .frame(width: pageWidth)
-                QuotaView()
                     .offset(y: compactPageYOffset)
                     .frame(width: pageWidth)
                 CostView()

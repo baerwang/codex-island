@@ -18,7 +18,7 @@ struct PanelHeader: View {
         HStack(spacing: 0) {
             let claudeOn = visibility.claudeVisible
             let codexOn = visibility.codexVisible
-                && ((screenPref.screen != .usage && screenPref.screen != .quota) || usageStore.codexHasSubscriptionQuota)
+                && (screenPref.screen != .usage || usageStore.codexHasSubscriptionQuota)
             providerTitle(name: "Claude", tag: usageStore.claude.plan?.uppercased(),
                           color: IslandColor.claude, alignment: .leading) {
                 EmptyView()

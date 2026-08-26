@@ -171,12 +171,9 @@
 "Weekly" = "Weekly";
 "5 hours" = "5 hours";
 "Quota mode" = "Quota mode";
-"Quota" = "Quota";
-"QUOTAS" = "QUOTAS";
-"Quota shows every CLI limit window" = "Quota shows every CLI limit window";
-"No Claude quota data" = "No Claude quota data";
-"No Codex quota data" = "No Codex quota data";
-"API/custom provider has no subscription quota" = "API/custom provider has no subscription quota";
+"All" = "All";
+"Account" = "Account";
+"Model" = "Model";
 "Auto reads CLI status; API keeps local token and cost stats only." = "Auto reads CLI status; API keeps local token and cost stats only.";
 "API/custom mode · local token and cost stats only" = "API/custom mode · local token and cost stats only";
 "Used" = "Used";

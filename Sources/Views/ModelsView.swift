@@ -5,6 +5,7 @@ import SwiftUI
 /// Claude and Codex visible together, including API-only Codex homes.
 struct ModelsView: View {
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
+    @ObservedObject private var usage = UsageStore.shared
 
     var body: some View {
         HStack(spacing: 0) {
@@ -27,6 +28,7 @@ struct ModelsView: View {
                 .font(Typography.rowTitle)
                 .foregroundStyle(.white.opacity(visible ? 0.82 : 0.34))
             if visible {
+                weeklyQuotaStrip(provider: provider)
                 PerModelBreakdown(provider: provider, metric: .tokens)
             } else {
                 Spacer(minLength: 0)
@@ -38,6 +40,38 @@ struct ModelsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 12)
+    }
+
+    @ViewBuilder
+    private func weeklyQuotaStrip(provider: AlertEngine.Provider) -> some View {
+        let windows: [ProviderQuotaWindow] = {
+            switch provider {
+            case .claude: return usage.claude.windows
+            case .codex:  return usage.codex.windows
+            }
+        }()
+        let weekly = windows.filter { $0.id.contains("week") }
+        if !weekly.isEmpty {
+            HStack(spacing: 7) {
+                ForEach(weekly) { window in
+                    Text("\(shortWeeklyLabel(window.label)) \(Int(((1 - window.usedPercent) * 100).rounded()))%")
+                        .font(Typography.micro)
+                        .foregroundStyle(.white.opacity(0.48))
+                        .lineLimit(1)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(provider == .claude ? "Claude" : "Codex") weekly quota remaining")
+        }
+    }
+
+    private func shortWeeklyLabel(_ label: String) -> String {
+        let lower = label.lowercased()
+        if lower.contains("fable") { return "Fable" }
+        if lower.contains("all models") { return L10n.tr("All") }
+        if lower.hasPrefix("weekly") { return L10n.tr("Account") }
+        if lower.contains("model") { return L10n.tr("Model") }
+        return label
     }
 
     private var hairline: some View {

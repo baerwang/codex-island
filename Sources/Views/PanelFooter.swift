@@ -74,7 +74,7 @@ struct PanelFooter: View {
         switch screenPref.screen {
         case .usage: return pref.hasCycledStyle
         case .cost:  return costPref.hasCycledStyle
-        case .quota, .models, .overview: return true
+        case .models, .overview: return true
         }
     }
 
@@ -82,7 +82,6 @@ struct PanelFooter: View {
         switch screenPref.screen {
         case .overview: return L10n.tr("Overview shows %@ usage history", currentYearString)
         case .models: return L10n.tr("Models shows local 5h and weekly activity")
-        case .quota: return L10n.tr("Quota shows every CLI limit window")
         case .usage, .cost: return L10n.tr("Tip: Command-click to cycle visualization")
         }
     }
@@ -92,7 +91,6 @@ struct PanelFooter: View {
         let label: String = {
             switch screenPref.screen {
             case .usage: return pref.style.label.uppercased()
-            case .quota: return L10n.tr("QUOTAS")
             case .cost:  return costPref.style.label
             case .models: return L10n.tr("MODELS")
             case .overview: return currentYearString
@@ -120,14 +118,14 @@ struct PanelFooter: View {
 
     private var activeLoading: Bool {
         switch screenPref.screen {
-        case .usage, .quota: return usageStore.loading
+        case .usage: return usageStore.loading
         case .cost, .models, .overview: return costStore.loading
         }
     }
 
     private var activeLastUpdated: Date? {
         switch screenPref.screen {
-        case .usage, .quota: return usageStore.lastUpdated
+        case .usage: return usageStore.lastUpdated
         case .cost, .models, .overview: return costStore.lastUpdated
         }
     }
@@ -186,7 +184,7 @@ struct PanelFooter: View {
 
     private func triggerRefresh() {
         switch screenPref.screen {
-        case .usage, .quota: usageStore.refresh()
+        case .usage: usageStore.refresh()
         case .cost, .models, .overview: costStore.refresh()
         }
     }
