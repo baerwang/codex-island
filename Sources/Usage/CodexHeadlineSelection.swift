@@ -6,11 +6,14 @@ import Foundation
 /// yielded usable data.
 enum CodexHeadlineSelection {
     static func select(
-        profiles: [CodexCLIProfile], readings: [UUID: AppUsage]
+        profiles: [CodexCLIProfile], readings: [UUID: AppUsage], preferredID: UUID? = nil
     ) -> (id: UUID, usage: AppUsage)? {
         let candidates = profiles.compactMap { profile -> (UUID, AppUsage)? in
             guard let usage = readings[profile.id] else { return nil }
             return (profile.id, usage)
+        }
+        if let preferredID, let preferred = candidates.first(where: { $0.0 == preferredID }) {
+            return preferred
         }
         return candidates.first {
             $0.1.fiveHour.hasReading || $0.1.weekly.hasReading

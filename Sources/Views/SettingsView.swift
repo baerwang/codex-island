@@ -637,7 +637,7 @@ struct SettingsView: View {
 
     private func codexProfileCaption(_ reading: AppUsage?) -> String {
         guard let reading else { return L10n.tr("Not refreshed") }
-        if reading.plan == "api" { return L10n.tr("API mode · local log cost and tokens only") }
+        if reading.plan == "api" { return L10n.tr("API/custom mode · local log cost and tokens only") }
         if let error = reading.fiveHour.error { return "⚠ \(error)" }
         let five = reading.fiveHour.displayedPercentInt(mode: usageDisplay.mode)
         let week = reading.weekly.displayedPercentInt(mode: usageDisplay.mode)

@@ -11,6 +11,7 @@ final class UsageStore: ObservableObject {
     @Published var codex: AppUsage = .empty
     @Published private(set) var codexByProfile: [UUID: AppUsage] = [:]
     @Published private(set) var codexHeadlineProfileID: UUID?
+    @Published private(set) var preferredCodexProfileID: UUID?
     @Published var lastUpdated: Date?
     @Published var loading = false
 
@@ -45,6 +46,10 @@ final class UsageStore: ObservableObject {
         refreshTask = Task {
             let profiles = CLIProviderConfigStore.shared.activeCodexProfiles
             let codexWorkdir = CLIProviderConfigStore.shared.codexWorkdir
+            if let preferredCodexProfileID,
+               !profiles.contains(where: { $0.id == preferredCodexProfileID }) {
+                self.preferredCodexProfileID = nil
+            }
             // Interactive TUI probes are intentionally serialized. Launching
             // several accounts at once multiplies proxy/CLI load and makes a
             // user-visible status refresh harder to reason about; the 5m+
@@ -79,7 +84,9 @@ final class UsageStore: ObservableObject {
             if profiles.isEmpty {
                 codex = UsageFetcher.errorPair("add codex profile")
                 codexHeadlineProfileID = nil
-            } else if let headline = CodexHeadlineSelection.select(profiles: profiles, readings: nextProfiles) {
+            } else if let headline = CodexHeadlineSelection.select(
+                profiles: profiles, readings: nextProfiles, preferredID: preferredCodexProfileID
+            ) {
                 // Quotas from accounts are never combined. The compact island
                 // shows one usable manually configured profile; Settings and
                 // the expanded quota list retain every profile separately.
@@ -90,7 +97,9 @@ final class UsageStore: ObservableObject {
                 codexHeadlineProfileID = nil
             }
             UsageHistoryStore.shared.record(provider: .claude, usage: newClaude, at: now)
-            if let headline = CodexHeadlineSelection.select(profiles: profiles, readings: nextProfiles) {
+            if let headline = CodexHeadlineSelection.select(
+                profiles: profiles, readings: nextProfiles, preferredID: preferredCodexProfileID
+            ) {
                 UsageHistoryStore.shared.record(provider: .codex, usage: headline.usage, at: now)
             }
             lastUpdated = now
@@ -107,6 +116,16 @@ final class UsageStore: ObservableObject {
             refreshPending = false
             refresh()
         }
+    }
+
+    /// An explicit in-memory profile choice is never an account aggregate and
+    /// is cleared naturally if the profile is removed. It lets the compact
+    /// island switch between manually configured Codex accounts.
+    func selectCodexProfile(id: UUID) {
+        guard let usage = codexByProfile[id] else { return }
+        preferredCodexProfileID = id
+        codexHeadlineProfileID = id
+        codex = usage
     }
 
     func startAutoRefresh() {

@@ -62,6 +62,17 @@ struct CLIUsageParserTests {
         expect(codexAPI.plan == "api", "Codex API-key mode is recognized")
         expect(!codexAPI.fiveHour.hasReading, "Codex API-key mode does not fabricate subscription quota")
 
+        let codexCustomProvider = CLIUsageParser.parseCodex("""
+        Model provider: whatai - https://example.invalid
+        Token usage: 0 total
+        Limits: data not available yet
+        """, timedOut: true)
+        expect(codexCustomProvider.plan == "api", "Codex custom provider with unavailable limits is recognized")
+        expect(
+            codexCustomProvider.fiveHour.error == "API/custom mode — no subscription quota",
+            "custom provider does not render as a timeout"
+        )
+
         let directCodexEnvironment = CLIStatusProbe.proxyEnvironmentChanges(
             provider: .codex, proxyURL: ""
         )

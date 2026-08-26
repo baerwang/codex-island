@@ -11,6 +11,7 @@ struct PanelHeader: View {
     let notch: NotchInfo
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
     @ObservedObject private var usageStore = UsageStore.shared
+    @ObservedObject private var config = CLIProviderConfigStore.shared
 
     var body: some View {
         HStack(spacing: 0) {
@@ -26,7 +27,7 @@ struct PanelHeader: View {
             Color.clear.frame(width: notch.width)
             providerTitle(name: "Codex", tag: usageStore.codex.plan?.uppercased(),
                           color: IslandColor.codex, alignment: .trailing) {
-                EmptyView()
+                codexProfilePicker
             }
                 .opacity(codexOn ? 1 : 0)
                 .animation(.openMorph, value: codexOn)
@@ -36,6 +37,41 @@ struct PanelHeader: View {
         .padding(.horizontal, 16)
         .padding(.top, 4)
         .padding(.bottom, min(14, max(0, notch.height - 22 - 4)))
+    }
+
+    @ViewBuilder
+    private var codexProfilePicker: some View {
+        let profiles = config.activeCodexProfiles
+        if profiles.count > 1 {
+            Menu {
+                ForEach(profiles) { profile in
+                    Button {
+                        usageStore.selectCodexProfile(id: profile.id)
+                    } label: {
+                        let selected = usageStore.codexHeadlineProfileID == profile.id
+                        Text(selected ? "✓ \(profile.name)" : profile.name)
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Text(selectedCodexProfileName(profiles) ?? "Codex")
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                }
+                .font(Typography.micro)
+                .foregroundStyle(.white.opacity(0.52))
+                .frame(maxWidth: 76, alignment: .trailing)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel("Codex profile")
+        }
+    }
+
+    private func selectedCodexProfileName(_ profiles: [CodexCLIProfile]) -> String? {
+        guard let id = usageStore.codexHeadlineProfileID else { return nil }
+        return profiles.first(where: { $0.id == id })?.name
     }
 
     @ViewBuilder

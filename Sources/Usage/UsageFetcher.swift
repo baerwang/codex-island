@@ -128,11 +128,14 @@ enum CLIUsageParser {
         // as a recognized state instead of asking the user to retry a status
         // screen that cannot contain 5h/weekly limits. Local-log cost/token
         // aggregation remains available for the same configured CODEX_HOME.
-        if fiveHour == nil || weekly == nil,
-           text.range(of: #"(?i)api[- ]key"#, options: .regularExpression) != nil {
+        let noSubscriptionLimits = text.range(
+            of: #"(?i)(api[- ]key|limits:\s*data\s+not\s+available|model\s+provider:)"#,
+            options: .regularExpression
+        ) != nil
+        if fiveHour == nil || weekly == nil, noSubscriptionLimits {
             return AppUsage(
-                fiveHour: WindowUsage(usedPercent: 0, resetAt: nil, error: "API mode — no subscription quota"),
-                weekly: WindowUsage(usedPercent: 0, resetAt: nil, error: "API mode — no subscription quota"),
+                fiveHour: WindowUsage(usedPercent: 0, resetAt: nil, error: "API/custom mode — no subscription quota"),
+                weekly: WindowUsage(usedPercent: 0, resetAt: nil, error: "API/custom mode — no subscription quota"),
                 plan: "api"
             )
         }
