@@ -602,7 +602,7 @@ struct SettingsView: View {
             TextField("Optional proxy, e.g. http://127.0.0.1:7890", text: profile.proxyURL)
                 .textFieldStyle(.roundedBorder)
             HStack(spacing: 8) {
-                Text("Quota mode")
+                Text(L10n.tr("Quota mode"))
                     .font(Typography.caption)
                     .foregroundStyle(.white.opacity(0.50))
                 Picker("", selection: quotaModeBinding(profile)) {
@@ -614,6 +614,9 @@ struct SettingsView: View {
                 .pickerStyle(.menu)
                 Spacer()
             }
+            Text(L10n.tr("Auto reads CLI status; API keeps local token and cost stats only."))
+                .font(Typography.micro)
+                .foregroundStyle(.white.opacity(0.36))
             Text(codexProfileCaption(reading))
                 .font(Typography.caption)
                 .foregroundStyle(.white.opacity(0.45))
@@ -650,7 +653,7 @@ struct SettingsView: View {
 
     private func codexProfileCaption(_ reading: AppUsage?) -> String {
         guard let reading else { return L10n.tr("Not refreshed") }
-        if reading.plan == "api" { return L10n.tr("API/custom mode · local log cost and tokens only") }
+        if reading.plan == "api" { return L10n.tr("API/custom mode · local token and cost stats only") }
         if let error = reading.fiveHour.error { return "⚠ \(error)" }
         let five = reading.fiveHour.displayedPercentInt(mode: usageDisplay.mode)
         let week = reading.weekly.displayedPercentInt(mode: usageDisplay.mode)

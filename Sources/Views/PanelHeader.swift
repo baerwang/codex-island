@@ -48,16 +48,24 @@ struct PanelHeader: View {
             return usage.fiveHour.hasReading || usage.weekly.hasReading
         }
         if profiles.count > 1 {
+            let selectedIndex = profiles.firstIndex {
+                $0.id == usageStore.codexHeadlineProfileID
+            } ?? 0
+            let selectedName = profiles[selectedIndex].name
             Button {
                 usageStore.selectNextCodexProfile(in: profiles)
             } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                HStack(spacing: 3) {
+                    Text("\(selectedIndex + 1)/\(profiles.count)")
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .font(Typography.micro)
                 .foregroundStyle(.white.opacity(0.52))
             }
             .buttonStyle(.plain)
-            .help("Switch Codex profile")
-            .accessibilityLabel("Next Codex profile")
+            .help("Current: \(selectedName). Click to switch Codex profile")
+            .accessibilityLabel("Codex profile \(selectedIndex + 1) of \(profiles.count). Next profile")
         }
     }
 

@@ -128,6 +128,7 @@
 "Warn" = "Warn";
 "Warning" = "Warning";
 "Warning: %d unpriced models — totals may be incomplete." = "Warning: %d unpriced models — totals may be incomplete.";
+"Warning: %@ missing price%@ — totals may be incomplete." = "Warning: %@ missing price%@ — totals may be incomplete.";
 "week" = "week";
 "waiting for browser…" = "waiting for browser…";
 "You" = "You";
@@ -155,6 +156,9 @@
 "Remaining" = "Remaining";
 "Show usage as used or remaining quota." = "Show usage as used or remaining quota.";
 "Usage display" = "Usage display";
+"Quota mode" = "Quota mode";
+"Auto reads CLI status; API keeps local token and cost stats only." = "Auto reads CLI status; API keeps local token and cost stats only.";
+"API/custom mode · local token and cost stats only" = "API/custom mode · local token and cost stats only";
 "Used" = "Used";
 "Keep the percentage and time remaining visible without hovering." = "Keep the percentage and time remaining visible without hovering.";
 "Inject test percentages. Visible only when launched with CODEXISLAND_DEBUG=1." = "Inject test percentages. Visible only when launched with CODEXISLAND_DEBUG=1.";

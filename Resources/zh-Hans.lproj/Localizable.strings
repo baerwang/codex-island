@@ -128,6 +128,7 @@
 "Warn" = "警告";
 "Warning" = "警告";
 "Warning: %d unpriced models — totals may be incomplete." = "警告：%d 个模型缺少价格，成本总额可能偏低。";
+"Warning: %@ missing price%@ — totals may be incomplete." = "警告：%@ 缺少价格%@，成本总额可能偏低。";
 "week" = "周";
 "waiting for browser…" = "等待浏览器…";
 "You" = "你";
@@ -155,6 +156,9 @@
 "Remaining" = "剩余";
 "Show usage as used or remaining quota." = "将用量百分比显示为已用或剩余额度。";
 "Usage display" = "用量显示";
+"Quota mode" = "额度模式";
+"Auto reads CLI status; API keeps local token and cost stats only." = "自动读取 CLI 状态；API 仅保留本地 Token 和成本统计。";
+"API/custom mode · local token and cost stats only" = "API/自定义模式 · 仅保留本地 Token 和成本统计";
 "Used" = "已用";
 "Keep the percentage and time remaining visible without hovering." = "无需悬停即可始终查看用量百分比和剩余时间。";
 "Inject test percentages. Visible only when launched with CODEXISLAND_DEBUG=1." = "注入测试百分比。仅在使用 CODEXISLAND_DEBUG=1 启动时显示。";

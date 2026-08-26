@@ -362,7 +362,11 @@ struct CostTile: View {
     private var resetGlyphSpoken: String {
         if let err = window.error { return err }
         if !window.unknownModels.isEmpty {
-            return L10n.tr("Warning: %d unpriced models — totals may be incomplete.", window.unknownModels.count)
+            let models = window.unknownModels.prefix(3).joined(separator: ", ")
+            let remainder = window.unknownModels.count > 3 ? " +\(window.unknownModels.count - 3)" : ""
+            return L10n.tr(
+                "Warning: %@ missing price%@ — totals may be incomplete.", models, remainder
+            )
         }
         let countdown = isMonth ? CostBucketing.monthResetIn() : CostBucketing.todayResetIn()
         return L10n.tr("Resets in %@", countdown)
