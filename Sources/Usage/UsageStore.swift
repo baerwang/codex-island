@@ -116,12 +116,12 @@ final class UsageStore: ObservableObject {
             guard let usage = readings[profile.id] else { return nil }
             return (profile.id, usage)
         }
-        // Skip a half-filled/inactive template in favor of the first profile
-        // that yielded a usable quota or a recognized API-key state. If none
-        // succeeds, surface the first error so configuration remains visible.
+        // Prefer an actual subscription reading. An API-key profile is a
+        // recognized state, but it has no quota and must not hide a later
+        // manually configured account that does report one.
         return candidates.first {
-            $0.1.fiveHour.hasReading || $0.1.weekly.hasReading || $0.1.plan == "api"
-        } ?? candidates.first
+            $0.1.fiveHour.hasReading || $0.1.weekly.hasReading
+        } ?? candidates.first { $0.1.plan == "api" } ?? candidates.first
     }
 
     func startAutoRefresh() {
