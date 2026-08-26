@@ -5,14 +5,11 @@ import SwiftUI
 /// (or 0 on first appearance) to `target` over ~0.65s using a cubic
 /// ease-out, driven by a 60Hz TimelineView.
 ///
-/// Visually identical to the previous static text — same 38pt brand-color
-/// monospace digits with the dual-shadow glow whose intensity is locked
-/// to the *final* target so the halo settles cleanly when the count
-/// finishes.
+/// Matches the static cost numeral: 38pt, brand-colored, monospaced digits
+/// without a halo that would soften adjacent labels and charts.
 struct CountUpDollar: View {
     let target: Double
     let color: Color
-    let glowOpacity: Double
 
     private static let duration: TimeInterval = 0.65
 
@@ -69,8 +66,6 @@ struct CountUpDollar: View {
         Text(text)
             .font(Typography.bigNumber)
             .foregroundStyle(color)
-            .shadow(color: color.opacity(glowOpacity), radius: 6)
-            .shadow(color: color.opacity(glowOpacity * 0.5), radius: 14)
     }
 
     private func startAnimation() {

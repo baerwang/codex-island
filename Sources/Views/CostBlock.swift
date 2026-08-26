@@ -124,7 +124,7 @@ struct CostTile: View {
             Text("$")
                 .font(Typography.unit)
                 .foregroundStyle(.white.opacity(0.4))
-            CountUpDollar(target: window.dollars, color: color, glowOpacity: glowOpacity)
+            CountUpDollar(target: window.dollars, color: color)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -212,8 +212,6 @@ struct CostTile: View {
             Text(tokensValue)
                 .font(Typography.bigNumber)
                 .foregroundStyle(color)
-                .shadow(color: color.opacity(glowOpacity), radius: 6)
-                .shadow(color: color.opacity(glowOpacity * 0.5), radius: 14)
             Text(tokensUnit)
                 .font(Typography.unit)
                 .foregroundStyle(.white.opacity(0.4))
