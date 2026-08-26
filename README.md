@@ -149,7 +149,8 @@ Codex proxy:
   run.
 
 The first fetch starts at app launch so the panel usually has values ready by
-the first peek. Opening Settings also triggers a fresh fetch.
+the first peek. Later automatic provider refreshes follow the selected interval;
+opening Settings alone does not start another CLI session.
 
 ## Using the app
 

@@ -43,9 +43,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         if let window, !window.isVisible { window.center() }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
-        // Give the latest values to the live strip the moment the window
-        // appears — the user opened settings, so a fresh fetch is timely.
-        UsageStore.shared.refresh()
         LaunchAtLoginStore.shared.refresh()
     }
 }
