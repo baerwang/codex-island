@@ -13,17 +13,19 @@ import Foundation
 /// keyed by (path, mtime, size). Between two 5/15/30-minute polls almost no
 /// rollout file has changed, so the steady-state refresh skips re-parsing.
 enum CodexLogReader {
-    static func scan(lookbackDays: Int = 30) -> [TokenEvent] {
+    static func scan(
+        lookbackDays: Int = 30, codexHome: String? = nil, sourceID: String? = nil
+    ) -> [TokenEvent] {
         let cutoff = Date().addingTimeInterval(-Double(lookbackDays) * 86400)
         var out: [TokenEvent] = []
 
         LogParseCache.walk(
-            roots: [sessionsRoot()],
+            roots: [sessionsRoot(codexHome: codexHome)],
             cutoff: cutoff,
             cacheFilename: "codex-parse-cache.v1.json",
             cacheVersion: cacheVersion,
             fileFilter: { $0.lastPathComponent.hasPrefix("rollout-") },
-            parse: parseFile(at:),
+            parse: { parseFile(at: $0) },
             emit: { (ev: CachedEvent) in
                 guard ev.timestamp >= cutoff else { return }
                 out.append(TokenEvent(
@@ -33,16 +35,19 @@ enum CodexLogReader {
                     inputTokens: ev.inputTokens,
                     outputTokens: ev.outputTokens,
                     cacheCreationTokens: 0,
-                    cacheReadTokens: ev.cacheReadTokens
+                    cacheReadTokens: ev.cacheReadTokens,
+                    projectID: ev.projectID,
+                    projectName: ev.projectName,
+                    sourceID: sourceID
                 ))
             }
         )
         return out
     }
 
-    private static func sessionsRoot() -> URL {
+    private static func sessionsRoot(codexHome: String?) -> URL {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        if let codexHome = ProcessInfo.processInfo.environment["CODEX_HOME"], !codexHome.isEmpty {
+        if let codexHome, !codexHome.isEmpty {
             return URL(fileURLWithPath: codexHome).appendingPathComponent("sessions", isDirectory: true)
         }
         return home.appendingPathComponent(".codex/sessions", isDirectory: true)
@@ -58,6 +63,7 @@ enum CodexLogReader {
         formatterNoFractional.formatOptions = [.withInternetDateTime]
 
         var currentModel: String?
+        var currentProject: String?
         var out: [CachedEvent] = []
 
         // `maxLineBytes` skips the multi-MB `response_item` blobs (base64
@@ -73,10 +79,18 @@ enum CodexLogReader {
             guard let raw = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
                   let type = raw["type"] as? String else { return }
 
+            if type == "session_meta",
+               let payload = raw["payload"] as? [String: Any],
+               let cwd = payload["cwd"] as? String, !cwd.isEmpty {
+                currentProject = cwd
+                return
+            }
+
             if type == "turn_context",
                let payload = raw["payload"] as? [String: Any],
                let model = payload["model"] as? String {
                 currentModel = model
+                if let cwd = payload["cwd"] as? String, !cwd.isEmpty { currentProject = cwd }
                 return
             }
 
@@ -112,7 +126,9 @@ enum CodexLogReader {
                 model: model,
                 inputTokens: nonCachedInput,
                 outputTokens: output,
-                cacheReadTokens: cached
+                cacheReadTokens: cached,
+                projectID: currentProject,
+                projectName: currentProject.map { URL(fileURLWithPath: $0).lastPathComponent }
             ))
         }
         return out
@@ -130,7 +146,7 @@ enum CodexLogReader {
 
     // MARK: - Per-file cache
 
-    private static let cacheVersion = 1
+    private static let cacheVersion = 2
 
     private struct CachedEvent: Codable {
         let timestamp: Date
@@ -138,5 +154,7 @@ enum CodexLogReader {
         let inputTokens: Int
         let outputTokens: Int
         let cacheReadTokens: Int
+        let projectID: String?
+        let projectName: String?
     }
 }

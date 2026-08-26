@@ -19,6 +19,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsShortcutMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Direct migration: values persisted by the deleted HTTP/OAuth usage
+        // implementation are intentionally discarded rather than displayed as
+        // current CLI readings.
+        UserDefaults.standard.removeObject(forKey: "CodexIsland.usageHistory.v1")
+        UserDefaults.standard.removeObject(forKey: "MacIsland.costCache.v7")
         // Before any window or store exists: the first cost scan must price
         // against the cached catalog, not fall back to the seed and then
         // silently change its numbers a moment later.
@@ -52,8 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // recompute sees whatever values the first refresh has produced.
         AlertEngine.shared.start()
 
-        // Touch the shared updater so Sparkle starts its background scheduler.
-        _ = UpdaterController.shared
+        // Runtime Sparkle checks are intentionally disabled. Release tooling
+        // remains unchanged, but the shipped app never starts an updater.
     }
 
     /// Pin the app to the run loop until the user explicitly quits.

@@ -71,6 +71,20 @@ struct DailyTokenBucket: Codable {
     let billableTokens: Int
 }
 
+/// Local-log attribution for one working directory. `sourceID` distinguishes
+/// two manually configured Codex homes that happened to work in the same path.
+struct ProjectUsageRow: Identifiable {
+    let id: String
+    let name: String
+    let sourceID: String?
+    let todayDollars: Double
+    let monthDollars: Double
+    let todayTokens: Int
+    let monthTokens: Int
+    let todayBillableTokens: Int
+    let monthBillableTokens: Int
+}
+
 /// Per-provider cost summary: today + month-to-date in calendar-local time.
 struct ProviderCost {
     var today: CostWindow
@@ -85,6 +99,9 @@ struct ProviderCost {
     /// Calendar-local daily history, oldest first, with today included as
     /// the final bucket. Powers the overview contribution grid ranges.
     var dailyTokens: [DailyTokenBucket] = []
+    /// Today/month project rows from local provider logs. Unattributed events
+    /// are represented as "Unattributed" rather than silently merged.
+    var projects: [ProjectUsageRow] = []
 
     static let empty = ProviderCost(
         today: CostWindow(
@@ -98,7 +115,8 @@ struct ProviderCost {
         ),
         recentByModel: [],
         weekByModel: [],
-        dailyTokens: []
+        dailyTokens: [],
+        projects: []
     )
 
     /// Placeholder values shown when a provider is toggled off in Settings.
@@ -118,6 +136,7 @@ struct ProviderCost {
         ),
         recentByModel: [],
         weekByModel: [],
-        dailyTokens: []
+        dailyTokens: [],
+        projects: []
     )
 }

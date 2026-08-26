@@ -65,17 +65,39 @@ struct WindowUsage {
     }
 }
 
+/// A provider-reported quota window retained verbatim from the CLI status
+/// screen. `AppUsage.fiveHour` / `.weekly` remain the compact island's two
+/// headline slots, while this list preserves all plan/model-specific windows.
+struct ProviderQuotaWindow: Identifiable, Equatable {
+    let id: String
+    let label: String
+    let usedPercent: Double
+    let resetAt: Date?
+
+    init(id: String, label: String, usedPercent: Double, resetAt: Date?) {
+        self.id = id
+        self.label = label
+        self.usedPercent = min(1, max(0, usedPercent))
+        self.resetAt = resetAt
+    }
+}
+
 struct AppUsage {
     var fiveHour: WindowUsage
     var weekly: WindowUsage
     /// Provider-reported plan tier — Claude's `subscriptionType` (free/pro/max)
     /// or Codex's `plan_type` (free/plus/pro). nil when unknown.
     var plan: String?
+    /// Every parsed CLI quota window, including model-specific windows that do
+    /// not fit the island's compact two-tile layout.
+    var windows: [ProviderQuotaWindow]
 
-    init(fiveHour: WindowUsage, weekly: WindowUsage, plan: String? = nil) {
+    init(fiveHour: WindowUsage, weekly: WindowUsage, plan: String? = nil,
+         windows: [ProviderQuotaWindow] = []) {
         self.fiveHour = fiveHour
         self.weekly = weekly
         self.plan = plan
+        self.windows = windows
     }
 
     static let empty = AppUsage(fiveHour: .unknown, weekly: .unknown)
@@ -105,7 +127,8 @@ struct AppUsage {
             weekly: carryForward(fetched.weekly, prior: prior.weekly, at: now),
             // Plan tier is read from the credential store, not the usage
             // response, so a failed fetch shouldn't blank the chip's badge.
-            plan: fetched.plan ?? prior.plan
+            plan: fetched.plan ?? prior.plan,
+            windows: fetched.windows.isEmpty ? prior.windows : fetched.windows
         )
     }
 

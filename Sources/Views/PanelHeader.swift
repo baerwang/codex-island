@@ -26,11 +26,7 @@ struct PanelHeader: View {
             Color.clear.frame(width: notch.width)
             providerTitle(name: "Codex", tag: usageStore.codex.plan?.uppercased(),
                           color: IslandColor.codex, alignment: .trailing) {
-                // Codex-only rate-limit reset credits, pinned to the Codex
-                // title so the badge unambiguously belongs to Codex — its old
-                // footer-center spot read as panel-global. Account-level like
-                // the plan tag, so it rides along on every screen.
-                CodexResetStatus()
+                EmptyView()
             }
                 .opacity(codexOn ? 1 : 0)
                 .animation(.openMorph, value: codexOn)

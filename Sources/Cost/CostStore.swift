@@ -23,7 +23,9 @@ final class CostStore: ObservableObject {
 
     var loading: Bool { claudeLoading || codexLoading }
 
-    private static let cacheKey = "MacIsland.costCache.v7"
+    /// v8 starts a clean local-log cache after project/profile attribution was
+    /// added. v7 is deliberately not migrated.
+    private static let cacheKey = "MacIsland.costCache.v8"
     private static let cacheEncoder = JSONEncoder()
     private static let cacheDecoder = JSONDecoder()
     private var pollTimer: Timer?
@@ -50,6 +52,10 @@ final class CostStore: ObservableObject {
             return
         }
         let days = CostSummary.yearHistoryDays()
+        // There is deliberately no implicit ~/.codex fallback: each Codex
+        // account/home must be manually configured before its local session
+        // logs become part of the aggregate.
+        let codexProfiles = CLIProviderConfigStore.shared.activeCodexProfiles
         // Only scan OpenCode when at least one provider will consume
         // the result; avoids wasted I/O when both are already loading.
         let openCodeTask: Task<[TokenEvent], Never>?
@@ -76,7 +82,14 @@ final class CostStore: ObservableObject {
             codexLoading = true
             Task.detached(priority: .userInitiated) { [weak self] in
                 let openCodeEvents = await openCodeTask?.value ?? []
-                let events = CodexLogReader.scan(lookbackDays: days)
+                let codexEvents = codexProfiles.flatMap { profile in
+                    CodexLogReader.scan(
+                        lookbackDays: days,
+                        codexHome: profile.expandedHome,
+                        sourceID: profile.id.uuidString
+                    )
+                }
+                let events = codexEvents
                     + openCodeEvents.filter { $0.provider == .codex }
                 let cost = CostSummary.summarize(events: events)
                 await self?.commitCodex(cost)

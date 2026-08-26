@@ -27,7 +27,9 @@ final class UsageHistoryStore: ObservableObject {
     /// interval filling memory.
     private static let maxAge: TimeInterval = 7 * 86400
     private static let maxSamples = 1000
-    private static let storageKey = "CodexIsland.usageHistory.v1"
+    /// v2 intentionally does not read v1: the old values came from direct
+    /// provider HTTP endpoints and must never appear after the CLI migration.
+    private static let storageKey = "CodexIsland.usageHistory.v2"
 
     private var series: [String: [UsageSample]]
 

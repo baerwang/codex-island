@@ -24,9 +24,10 @@ history.
 https://github.com/user-attachments/assets/195beeff-0f70-4d6b-8f3d-9f31d9c0b989
 
 
-The app is free, open source, unsigned, and local-first. It reads credentials
-already written by Claude Code / Claude Desktop and Codex, then calls only the
-providers' own usage endpoints.
+The app is free, open source, unsigned, and local-first. It launches the
+Claude Code and Codex CLIs you already use in a local pseudo-terminal, then
+parses their interactive usage screens. It never reads their credentials or
+calls provider usage/OAuth endpoints itself.
 
 ## What it does
 
@@ -71,16 +72,12 @@ providers' own usage endpoints.
 - **Display selection.** Auto-pick a notched display or pin the island to a
   specific connected display. Non-notched displays offer compact and
   notch-style widths.
-- **Configurable safe polling.** Choose 5m, 15m, or 30m. The app does not offer
-  sub-5-minute polling because Anthropic rate-limits the usage endpoint
-  aggressively.
+- **Configurable safe polling.** Choose 5m, 15m, or 30m. Each poll is a
+  status-only CLI session, never a direct provider API request.
 - **Universal binary.** `build.sh` compiles arm64 and x86_64 slices and merges
   them with `lipo`, targeting macOS 13+.
-- **Auto-updates via Sparkle.** The app checks the appcast attached to the
-  latest GitHub Release in the background, then prompts before installing.
-  Updates are signed with an EdDSA key — verifiable without involving Apple's
-  signing infrastructure. Toggle off automatic checks in Settings if you'd
-  rather pin a version.
+- **No runtime auto-updates.** Sparkle's release tooling remains in the
+  repository, but the shipped app does not start update checks or downloads.
 - **Native app privacy.** No app telemetry, no crash reporting, no third-party
   app analytics, and no proxy service.
 
@@ -132,28 +129,17 @@ follow.
 
 ## First run
 
-CodexIsland does not ask for passwords or API keys. It reads the auth state
-already created by the command-line tools or desktop apps you use.
+CodexIsland does not ask for passwords, API keys, or OAuth tokens. Sign in to
+the CLI first, then configure the proxy required for each provider:
 
-For Codex:
-
-- Sign in to Codex / ChatGPT CLI first.
-- CodexIsland reads `~/.codex/auth.json`.
-- If the file or access token is missing, the panel shows `no codex auth`.
-
-For Claude:
-
-- Run `claude` once, or open Claude Desktop, so Claude credentials are
-  populated.
-- CodexIsland checks `CLAUDE_CODE_OAUTH_TOKEN`, then
-  `$CLAUDE_CONFIG_DIR/.credentials.json` (normally
-  `~/.claude/.credentials.json`), then the macOS Keychain item named
-  `Claude Code-credentials`.
-- Credential access is strictly read-only. CodexIsland never refreshes OAuth
-  tokens or writes to Claude's credential store; run `claude` when an access
-  token expires, or `claude /login` when the endpoint requires a newly scoped
-  token.
-- If none work, the panel shows `auth required — run claude`.
+- **Claude:** enter a valid HTTP(S) proxy in Settings. The app launches
+  `claude`, sends `/usage`, and parses its Current session, all-model weekly,
+  and Fable weekly windows. An empty proxy disables the request.
+- **Codex:** add every account explicitly in Settings; each profile needs a
+  display name, `CODEX_HOME`, and its own valid proxy. CodexIsland launches
+  `codex` under that `CODEX_HOME`, runs `/status` up to three times in the same
+  PTY session (three seconds apart), and keeps profiles isolated. Empty or
+  invalid profiles do not run.
 
 The first fetch starts at app launch so the panel usually has values ready by
 the first peek. Opening Settings also triggers a fresh fetch.
@@ -284,11 +270,11 @@ Native app behavior:
   The request carries no identifier, no token, and no usage data — it is a
   plain GET for a static JSON file, and the app works from a local cache when
   it fails.
-- Codex tokens are read locally from `~/.codex/auth.json`.
-- Claude tokens are read from `CLAUDE_CODE_OAUTH_TOKEN`, Claude's credentials
-  file, or the macOS Keychain. CodexIsland never refreshes or writes them.
-- Tokens leave the machine only as `Authorization` headers to `chatgpt.com` and
-  `api.anthropic.com`.
+- CodexIsland never reads `auth.json`, Keychain secrets, environment OAuth
+  tokens, or API keys. Authentication and provider network traffic stay inside
+  the child CLI process.
+- The app passes only the configured `HTTP_PROXY` / `HTTPS_PROXY` (and Claude's
+  local `NO_PROXY` exclusions) to those CLI sessions.
 - The Cost screen reads local Claude Code session logs from
   `~/.claude/projects/**/*.jsonl` (and `~/.config/claude/...`, plus any path
   in `CLAUDE_CONFIG_DIR`), Codex session logs from `~/.codex/sessions/`, and
@@ -304,31 +290,21 @@ local log readers live in [`Sources/Cost/`](Sources/Cost/).
 
 ## Troubleshooting
 
-**Claude shows `auth required — run claude`.**
-Run `claude` once in Terminal or open Claude Desktop so the credentials exist.
+**Claude or Codex shows `proxy required`.**
+Add a valid `http://` or `https://` proxy to the corresponding Settings field.
+The app intentionally does not launch status probes without one.
 
-**Claude shows `token expired — run claude`.**
-Run `claude` so Claude Code can refresh its own token. CodexIsland intentionally
-does not refresh it.
-
-**Claude shows `re-login: claude /login`.**
-The stored token is missing a scope now required by the usage endpoint. Run
-`claude /login` to mint a newly scoped token; refreshing the old token is not
-enough.
-
-**Codex shows `no codex auth`.**
-Sign in to Codex / ChatGPT CLI and confirm `~/.codex/auth.json` exists.
-
-**Codex shows `auth expired — codex login`.**
-Run `codex login` to refresh the credentials in `~/.codex/auth.json`.
+**Codex shows `add codex profile` or `codex home required`.**
+Add a profile manually, then enter its absolute `CODEX_HOME` and proxy. The
+app deliberately has no implicit `~/.codex` fallback.
 
 **The app shows stale values after an error.**
 That is intentional. `UsageStore` keeps the previous good values when a refresh
 returns only errors, so a temporary 429 does not turn the panel into 0%.
 
 **Why can I not choose 30-second polling?**
-Anthropic rate-limits `/api/oauth/usage` aggressively at the account level. The
-app exposes 5m, 15m, and 30m only.
+The app starts full interactive CLI status sessions, so it exposes 5m, 15m,
+and 30m only.
 
 **Does it work without a notch?**
 Yes. It falls back to a compact menu-bar pill; Settings can switch it to the
@@ -339,10 +315,9 @@ Yes, with one island at a time. Auto mode prefers a notched display, then the
 main display. You can also pin the island to a connected display in Settings;
 if that display is unplugged, CodexIsland falls back to Auto.
 
-**Will the usage endpoints break?**
-Probably at some point. Both provider endpoints are undocumented. If the panel
-starts showing parse errors or HTTP errors, open an issue with the response
-shape and redact tokens.
+**Will CLI status parsing break?**
+Possibly. The usage panels are interactive TUI output. If a CLI release changes
+its layout, report the redacted transcript and CLI version.
 
 **Why is there no Dock icon?**
 CodexIsland is an accessory app. Use the gear in the expanded island to open
@@ -351,7 +326,8 @@ Settings, and use Settings -> Quit to exit.
 ## Known limits
 
 - Unsigned builds require dequarantine / Open Anyway.
-- Claude and Codex usage endpoints are undocumented.
+- Claude and Codex status panels are interactive and can change between CLI
+  versions.
 - Sparkline history contains only readings CodexIsland records while it is
   running; providers do not expose historical usage series.
 - Multi-monitor setups use one island, pinned to or auto-selected for one

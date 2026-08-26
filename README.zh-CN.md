@@ -10,7 +10,7 @@
 
 CodexIsland 是一个原生 macOS 悬浮层，把 MacBook 刘海变成类似 Dynamic Island 的实时用量状态。它支持 Claude Code 和 Codex，用悬停预览 5 小时窗口，用点击展开完整面板，展示 5 小时与周窗口的用量、重置时间、图表样式，以及从本地会话日志估算的美元成本和 token 吞吐量。
 
-应用免费、开源、未签名，并且以本地优先为原则。它读取 Claude Code / Claude Desktop 和 Codex 已经写入本机的凭据，只调用对应服务自己的用量接口。
+应用免费、开源、未签名，并且以本地优先为原则。它在本机 PTY 中启动 Claude Code 和 Codex，解析交互式用量页面；应用自身不读取凭据，也不直接调用服务商的用量或 OAuth 接口。
 
 ## 功能
 
@@ -25,9 +25,9 @@ CodexIsland 是一个原生 macOS 悬浮层，把 MacBook 刘海变成类似 Dyn
 - **手动刷新。** 点击面板头部的同步状态即可立即重新拉取数据。
 - **低功耗模式。** 可以隐藏常驻辉光，只在刷新、悬停或接近限额提醒时显示。
 - **无 Dock 图标设置窗口。** 应用以 accessory app 运行，通过面板里的齿轮打开自定义设置窗口。
-- **安全轮询间隔。** 支持 5 分钟、15 分钟、30 分钟；不提供低于 5 分钟的轮询，避免触发 Anthropic 用量接口的严格限流。
+- **安全轮询间隔。** 支持 5 分钟、15 分钟、30 分钟；每次都是状态专用 CLI 会话，不直接调用应用侧服务商接口。
 - **通用二进制。** `build.sh` 会编译 arm64 和 x86_64 两个切片，并用 `lipo` 合并，目标为 macOS 13+。
-- **Sparkle 自动更新。** 启动时和每天一次检查最新 GitHub Release 的 appcast，安装前会提示用户确认。
+- **运行时不自动更新。** 保留 Sparkle 发布工具链，但应用本身不会启动检查或下载更新。
 - **原生隐私边界。** 没有应用遥测、崩溃上报、第三方分析或代理服务。
 
 ## 安装
@@ -54,19 +54,17 @@ CodexIsland 未签名，因为 Apple Developer ID 证书需要每年付费，而
 
 ## 首次运行
 
-CodexIsland 不会询问密码或 API key。它只读取你已经登录过的命令行工具或桌面应用的认证状态。
+CodexIsland 不会询问或读取密码、API key、OAuth token、`auth.json` 或 Keychain 凭据。它只在本机 PTY 中启动你已经登录的 CLI，并让 CLI 自己通过配置的代理联网。
 
 Codex：
 
-- 先登录 Codex / ChatGPT CLI。
-- CodexIsland 读取 `~/.codex/auth.json`。
-- 如果文件或 access token 缺失，面板会显示 `no codex auth`。
+- 在设置中手动新增每个账号 profile，分别填写名称、`CODEX_HOME` 和必填代理；不会隐式读取 `~/.codex`。
+- 应用在同一会话内最多三次执行 `/status`，每次间隔 3 秒，解析 5 小时、周及模型专属窗口。
 
 Claude：
 
-- 运行一次 `claude`，或打开 Claude Desktop，让 Claude 凭据写入本机。
-- CodexIsland 会依次尝试 `CLAUDE_CODE_OAUTH_TOKEN`、macOS Keychain 里的 `Claude Code-credentials`，以及 Anthropic OAuth token endpoint 的刷新流程。
-- 如果都不可用，面板会显示 `auth required — run claude`。
+- 在设置中填写必填代理；应用执行 `claude /usage`，解析当前会话、所有模型周额度和 Fable 周额度。
+- 代理为空时不会启动 CLI 状态读取。
 
 应用启动后会立即进行第一次拉取，所以你第一次悬停时通常已经能看到数据。打开设置也会触发一次刷新。
 

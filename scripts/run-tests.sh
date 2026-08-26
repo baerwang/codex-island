@@ -1,24 +1,12 @@
 #!/bin/bash
-# Compiles the usage-resolution sources together with the test harness and
-# runs it. No XCTest/SPM — mirrors build.sh's bare-swiftc approach. The env
-# token stub routes resolveUsage through the injected probe deterministically
-# (see Tests/ResolveUsageTests.swift).
+# Compiles the standalone value-layer test harnesses. No XCTest/SPM — mirrors
+# build.sh's bare-swiftc setup.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 OUT_DIR=$(mktemp -d)
 trap 'rm -rf "$OUT_DIR"' EXIT
-
-swiftc \
-  -parse-as-library \
-  -o "$OUT_DIR/resolve-usage-tests" \
-  Sources/Model/UsageDisplayModeStore.swift \
-  Sources/Usage/AppUsage.swift \
-  Sources/Usage/ClaudeCredentials.swift \
-  Tests/ResolveUsageTests.swift
-
-CLAUDE_CODE_OAUTH_TOKEN="test-stub-token" "$OUT_DIR/resolve-usage-tests"
 
 swiftc \
   -parse-as-library \
@@ -41,26 +29,16 @@ swiftc \
 
 swiftc \
   -parse-as-library \
-  -o "$OUT_DIR/wake-recovery-tests" \
+  -o "$OUT_DIR/cli-usage-parser-tests" \
+  Sources/Model/PreferenceStorage.swift \
+  Sources/Model/CLIProviderConfig.swift \
   Sources/Model/UsageDisplayModeStore.swift \
   Sources/Usage/AppUsage.swift \
-  Sources/Usage/ClaudeCredentials.swift \
-  Sources/Usage/WakeScheduling.swift \
-  Tests/WakeRecoveryTests.swift
-
-"$OUT_DIR/wake-recovery-tests"
-
-swiftc \
-  -parse-as-library \
-  -o "$OUT_DIR/codex-window-routing-tests" \
-  Sources/Model/UsageDisplayModeStore.swift \
-  Sources/Usage/AppUsage.swift \
-  Sources/Usage/ClaudeCredentials.swift \
-  Sources/Usage/CodexResetCredits.swift \
+  Sources/Usage/CLIStatusProbe.swift \
   Sources/Usage/UsageFetcher.swift \
-  Tests/CodexWindowRoutingTests.swift
+  Tests/CLIUsageParserTests.swift
 
-"$OUT_DIR/codex-window-routing-tests"
+"$OUT_DIR/cli-usage-parser-tests"
 
 swiftc \
   -parse-as-library \

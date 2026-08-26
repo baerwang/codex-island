@@ -22,7 +22,7 @@ struct SettingsView: View {
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @ObservedObject private var usage = UsageStore.shared
     @ObservedObject private var cost = CostStore.shared
-    @ObservedObject private var updater = UpdaterController.shared
+    @ObservedObject private var cliConfig = CLIProviderConfigStore.shared
 
     @AppStorage("Settings.activeTab") private var activeTabRaw: String = SettingsTab.general.rawValue
 
@@ -130,7 +130,6 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             generalSection
             alertsSection
-            updatesSection
         }
     }
 
@@ -157,8 +156,11 @@ struct SettingsView: View {
     private var providersTab: some View {
         VStack(alignment: .leading, spacing: 0) {
             providersSection
+            cliStatusConfigurationSection
+            QuotaWindowList()
             tokenCountingSection
             costSection
+            ProjectUsageList()
         }
     }
 
@@ -431,29 +433,6 @@ struct SettingsView: View {
         }
     }
 
-    private var updatesSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionLabel("Updates")
-            SettingsRow(
-                title: "Check for updates automatically",
-                subtitle: "Check for new versions in the background and notify you when one's available."
-            ) {
-                SettingsToggle(isOn: updater.automaticallyChecks) {
-                    updater.automaticallyChecks.toggle()
-                }
-            }
-            SettingsRow(
-                title: "Check now",
-                subtitle: "Look for a new version immediately."
-            ) {
-                PillButton(label: "Check") { updater.checkForUpdates() }
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.top, 14)
-        .padding(.bottom, 6)
-    }
-
     private var languagePicker: some View {
         Picker("", selection: languageSelection) {
             ForEach(AppLanguage.allCases, id: \.self) { language in
@@ -519,6 +498,115 @@ struct SettingsView: View {
         .padding(.horizontal, 14)
         .padding(.top, 18)
         .padding(.bottom, 6)
+    }
+
+    /// Credentials are intentionally absent from this UI. Users configure only
+    /// the CLI launch context (proxy and CODEX_HOME); the provider CLI owns its
+    /// own authentication state and network requests.
+    private var cliStatusConfigurationSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionLabel("CLI status")
+            SettingsRow(
+                title: "Claude proxy",
+                subtitle: "Required for Claude /usage. Empty means no CLI status request."
+            ) {
+                TextField("http://127.0.0.1:7897", text: $cliConfig.claudeProxyURL)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 210)
+            }
+
+            Text(L10n.tr("Codex profiles"))
+                .font(Typography.rowTitle)
+                .foregroundStyle(.white.opacity(0.88))
+                .padding(.horizontal, 10)
+                .padding(.top, 8)
+
+            if cliConfig.codexProfiles.isEmpty {
+                Text(L10n.tr("No Codex profile. Add one before Codex status can refresh."))
+                    .font(Typography.label)
+                    .foregroundStyle(.white.opacity(0.48))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+            }
+
+            ForEach($cliConfig.codexProfiles) { $profile in
+                codexProfileEditor($profile)
+            }
+
+            HStack {
+                Spacer()
+                PillButton(label: "Add Codex") { cliConfig.addCodexProfile() }
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 2)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
+    }
+
+    private func codexProfileEditor(_ profile: Binding<CodexCLIProfile>) -> some View {
+        let reading = usage.codexByProfile[profile.wrappedValue.id]
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                TextField("Profile name", text: profile.name)
+                    .textFieldStyle(.roundedBorder)
+                SettingsToggle(isOn: profile.enabled.wrappedValue) {
+                    profile.enabled.wrappedValue.toggle()
+                }
+                Button {
+                    cliConfig.removeCodexProfile(id: profile.wrappedValue.id)
+                } label: {
+                    Image(systemName: "minus.circle")
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+                .buttonStyle(.plain)
+                .help(L10n.tr("Remove profile"))
+            }
+            TextField("CODEX_HOME (absolute path)", text: profile.codexHome)
+                .textFieldStyle(.roundedBorder)
+            TextField("Required proxy, e.g. http://127.0.0.1:7890", text: profile.proxyURL)
+                .textFieldStyle(.roundedBorder)
+            Text(codexProfileCaption(reading))
+                .font(Typography.caption)
+                .foregroundStyle(.white.opacity(0.45))
+            if let reading, !reading.windows.isEmpty {
+                ForEach(reading.windows) { window in
+                    HStack(spacing: 6) {
+                        Text(window.label)
+                            .font(Typography.caption)
+                            .foregroundStyle(.white.opacity(0.50))
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text("\(Int((window.usedPercent * 100).rounded()))%")
+                            .font(Typography.caption)
+                            .foregroundStyle(.white.opacity(0.72))
+                        if let reset = window.resetAt {
+                            Text("↻ \(Duration.compact(max(0, reset.timeIntervalSinceNow)))")
+                                .font(Typography.micro)
+                                .foregroundStyle(.white.opacity(0.40))
+                        }
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.white.opacity(0.035))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(.white.opacity(0.07), lineWidth: 0.5)
+                )
+        )
+    }
+
+    private func codexProfileCaption(_ reading: AppUsage?) -> String {
+        guard let reading else { return L10n.tr("Not refreshed") }
+        if let error = reading.fiveHour.error { return "⚠ \(error)" }
+        let five = reading.fiveHour.displayedPercentInt(mode: usageDisplay.mode)
+        let week = reading.weekly.displayedPercentInt(mode: usageDisplay.mode)
+        return "5h \(five)% · week \(week)%"
     }
 
     /// Lets the user pick which token total drives the TOKENS hero on the

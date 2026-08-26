@@ -8,6 +8,17 @@ import Foundation
 /// it off the main actor without touching `@MainActor` state. `now` is
 /// injectable so the window boundaries are testable.
 enum CostSummary {
+    private struct ProjectAccumulator {
+        var name: String
+        var sourceID: String?
+        var todayDollars = 0.0
+        var monthDollars = 0.0
+        var todayTokens = 0
+        var monthTokens = 0
+        var todayBillable = 0
+        var monthBillable = 0
+    }
+
     static func summarize(events: [TokenEvent], now: Date = Date()) -> ProviderCost {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = .current
@@ -51,6 +62,7 @@ enum CostSummary {
         // extra `>=` per event — cheap relative to JSON parsing upstream.
         var weekTokensByModel: [String: Int] = [:]
         var weekDollarsByModel: [String: Double] = [:]
+        var projects: [String: ProjectAccumulator] = [:]
 
         // Drop events older than every window's start. Using `min(...)`
         // matters here because the rolling 7-day window straddles month
@@ -71,6 +83,9 @@ enum CostSummary {
             let billable = event.inputTokens + event.outputTokens
             let tokens = billable + event.cacheCreationTokens + event.cacheReadTokens
             let isUnpriced = tokens > 0 && !Pricing.isKnown(event.model)
+            let projectID = "\(event.sourceID ?? "local")::\(event.projectID ?? "unattributed")"
+            let projectName = event.projectName?.isEmpty == false ? event.projectName! : "Unattributed"
+            let sourceID = event.sourceID
 
             if event.timestamp >= historyStart {
                 let eventDay = cal.startOfDay(for: event.timestamp)
@@ -91,6 +106,11 @@ enum CostSummary {
                 let day = (cal.dateComponents([.day], from: event.timestamp).day ?? 1) - 1
                 if day < dailyBuckets.count { dailyBuckets[day] += cost }
                 if isUnpriced { monthUnknown.insert(event.model) }
+                var project = projects[projectID] ?? ProjectAccumulator(name: projectName, sourceID: sourceID)
+                project.monthDollars += cost
+                project.monthTokens += tokens
+                project.monthBillable += billable
+                projects[projectID] = project
             }
 
             // Today is a strict subset of month
@@ -101,6 +121,11 @@ enum CostSummary {
                 let hour = cal.dateComponents([.hour], from: event.timestamp).hour ?? 0
                 if hour < hourlyBuckets.count { hourlyBuckets[hour] += cost }
                 if isUnpriced { todayUnknown.insert(event.model) }
+                var project = projects[projectID] ?? ProjectAccumulator(name: projectName, sourceID: sourceID)
+                project.todayDollars += cost
+                project.todayTokens += tokens
+                project.todayBillable += billable
+                projects[projectID] = project
             }
 
             // Weekly rolling window slice — superset of recent, subset of
@@ -162,7 +187,19 @@ enum CostSummary {
                 tokens: historyTokenBuckets,
                 billableTokens: historyBillableBuckets,
                 calendar: cal
-            )
+            ),
+            projects: projects.map { key, value in
+                ProjectUsageRow(
+                    id: key, name: value.name, sourceID: value.sourceID,
+                    todayDollars: value.todayDollars, monthDollars: value.monthDollars,
+                    todayTokens: value.todayTokens, monthTokens: value.monthTokens,
+                    todayBillableTokens: value.todayBillable, monthBillableTokens: value.monthBillable
+                )
+            }
+            .sorted {
+                if $0.monthDollars != $1.monthDollars { return $0.monthDollars > $1.monthDollars }
+                return $0.monthTokens > $1.monthTokens
+            }
         )
     }
 
