@@ -38,7 +38,7 @@ struct CLIUsageParserTests {
         (resets 17:16 on 31 Aug)
         """, timedOut: false)
         expect(codex.fiveHour.percentInt == 0, "Codex 5h remaining maps to used fraction")
-        expect(codex.weekly.percentInt == 71, "Codex model weekly remaining maps to used fraction")
+        expect(codex.weekly.percentInt == 6, "Codex account weekly remaining maps to used fraction")
         expect(codex.windows.count == 3, "Codex retains every weekly/model window")
         expect(codex.plan == "pro", "Codex plan parses")
 
@@ -53,7 +53,7 @@ struct CLIUsageParserTests {
         Weekly limit: 29% left (resets 17:16 on 31 Aug)
         """, timedOut: false)
         expect(redrawnCodex.windows.count == 3, "Codex TUI redraws do not duplicate windows")
-        expect(redrawnCodex.weekly.percentInt == 71, "Codex final model weekly survives redraw")
+        expect(redrawnCodex.weekly.percentInt == 6, "Codex account weekly survives redraw")
 
         let codexAPI = CLIUsageParser.parseCodex("""
         Authentication: API key

@@ -135,7 +135,10 @@ enum CLIUsageParser {
         // that one account weekly limit plus one model weekly limit stays two
         // rows instead of being repeated for each /status refresh.
         let fiveHour = fiveHours.last
-        let weekly = weekReadings.last
+        // The first weekly row is the account-wide limit. Later weekly rows
+        // belong to model-specific limits (for example Codex Spark) and stay
+        // in `windows`, but must not replace the compact account-week card.
+        let weekly = weekReadings.first
         let plan = capture(in: text, pattern: #"(?i)\((Pro|Plus|Business|Enterprise)\)"#)
         // API-key sessions have no subscription quota by design. Treat this
         // as a recognized state instead of asking the user to retry a status

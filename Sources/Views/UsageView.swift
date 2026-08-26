@@ -150,7 +150,10 @@ struct ChartTile: View {
             ? window.displayedFraction(mode: usageDisplay.mode) * 100   // 0-100
             : nil
         let sub = subCaption()
-        let label = L10n.tr(labelKey)
+        // A bare "week 9%" is ambiguous: Codex itself reports remaining
+        // while this app can be configured for used or remaining display.
+        // Carry the active metric into every chart style.
+        let label = "\(L10n.tr(labelKey)) \(L10n.tr(usageDisplay.mode.label))"
 
         Group {
             if let value {

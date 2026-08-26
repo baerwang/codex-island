@@ -171,6 +171,12 @@
 "Weekly" = "周额度";
 "5 hours" = "5 小时";
 "Quota mode" = "额度模式";
+"Quota" = "额度详情";
+"QUOTAS" = "额度";
+"Quota shows every CLI limit window" = "额度页显示 CLI 提供的所有额度窗口。";
+"No Claude quota data" = "没有 Claude 额度数据";
+"No Codex quota data" = "没有 Codex 额度数据";
+"API/custom provider has no subscription quota" = "API/自定义 provider 没有订阅额度";
 "Auto reads CLI status; API keeps local token and cost stats only." = "自动读取 CLI 状态；API 仅保留本地 Token 和成本统计。";
 "API/custom mode · local token and cost stats only" = "API/自定义模式 · 仅保留本地 Token 和成本统计";
 "Used" = "已用";
