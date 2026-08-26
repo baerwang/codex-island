@@ -23,9 +23,9 @@ enum CatalogFetchResult: Equatable {
 /// Remote model price table, refreshed daily from the published catalog.
 ///
 /// `Pricing` reads this before its own embedded seed, so anything installed
-/// here decides what the user is charged on screen. Every path that fails to
-/// produce a complete, current payload therefore leaves the previous state
-/// untouched rather than installing something partial.
+    /// here decides what the user is charged on screen. Every path that fails to
+    /// produce a complete, current payload therefore leaves the previous state
+    /// untouched rather than installing something partial.
 enum PricingCatalog {
     static let supportedSchemaVersion = 1
 
@@ -39,8 +39,8 @@ enum PricingCatalog {
     /// off the main actor while a refresh installs. The lock is what keeps
     /// that from being a data race.
     private static let lock = NSLock()
-    private static var models: [String: CatalogRates] = [:]
-    private static var fetchedAt: Date?
+    private nonisolated(unsafe) static var models: [String: CatalogRates] = [:]
+    private nonisolated(unsafe) static var fetchedAt: Date?
 
     static func rates(for canonical: String) -> CatalogRates? {
         lock.lock()
@@ -78,7 +78,7 @@ enum PricingCatalog {
 
     private static let refreshInterval: TimeInterval = 24 * 60 * 60
 
-    private static var etag: String?
+    private nonisolated(unsafe) static var etag: String?
 
     private static var storedETag: String? {
         get { lock.lock(); defer { lock.unlock() }; return etag }

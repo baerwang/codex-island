@@ -210,9 +210,9 @@ final class IslandWindowController {
             object: window,
             queue: .main
         ) { [weak self] _ in
-            guard let self else { return }
-            let visible = self.window.occlusionState.contains(.visible)
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let visible = self.window.occlusionState.contains(.visible)
                 WindowOcclusionStore.shared.update(isVisible: visible)
             }
         }
