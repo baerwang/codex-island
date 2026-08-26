@@ -9,6 +9,7 @@ final class ScreenPref: ObservableObject {
     enum Screen: String, CaseIterable {
         case usage
         case cost
+        case models
         case overview
 
         var pageIndex: Int {
@@ -19,6 +20,7 @@ final class ScreenPref: ObservableObject {
             switch self {
             case .usage:    return L10n.tr("Usage")
             case .cost:     return L10n.tr("Cost")
+            case .models:   return L10n.tr("Models")
             case .overview: return L10n.tr("Overview")
             }
         }

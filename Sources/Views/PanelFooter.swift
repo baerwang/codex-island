@@ -74,13 +74,14 @@ struct PanelFooter: View {
         switch screenPref.screen {
         case .usage: return pref.hasCycledStyle
         case .cost:  return costPref.hasCycledStyle
-        case .overview: return true
+        case .models, .overview: return true
         }
     }
 
     private var cycleHintAccessibilityLabel: String {
         switch screenPref.screen {
         case .overview: return L10n.tr("Overview shows %@ usage history", currentYearString)
+        case .models: return L10n.tr("Models shows local 5h and weekly activity")
         case .usage, .cost: return L10n.tr("Tip: Command-click to cycle visualization")
         }
     }
@@ -91,6 +92,7 @@ struct PanelFooter: View {
             switch screenPref.screen {
             case .usage: return pref.style.label.uppercased()
             case .cost:  return costPref.style.label
+            case .models: return L10n.tr("MODELS")
             case .overview: return currentYearString
             }
         }()
@@ -117,14 +119,14 @@ struct PanelFooter: View {
     private var activeLoading: Bool {
         switch screenPref.screen {
         case .usage: return usageStore.loading
-        case .cost, .overview: return costStore.loading
+        case .cost, .models, .overview: return costStore.loading
         }
     }
 
     private var activeLastUpdated: Date? {
         switch screenPref.screen {
         case .usage: return usageStore.lastUpdated
-        case .cost, .overview: return costStore.lastUpdated
+        case .cost, .models, .overview: return costStore.lastUpdated
         }
     }
 
@@ -183,7 +185,7 @@ struct PanelFooter: View {
     private func triggerRefresh() {
         switch screenPref.screen {
         case .usage: usageStore.refresh()
-        case .cost, .overview: costStore.refresh()
+        case .cost, .models, .overview: costStore.refresh()
         }
     }
 

@@ -123,6 +123,10 @@
 "TREND" = "TREND";
 "USD" = "USD";
 "Usage" = "Usage";
+"Models" = "Models";
+"MODELS" = "MODELS";
+"Models shows local 5h and weekly activity" = "Models shows local 5h and weekly activity";
+"Provider hidden" = "Provider hidden";
 "Updates" = "Updates";
 "VALUE" = "VALUE";
 "Warn" = "Warn";

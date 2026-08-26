@@ -123,6 +123,10 @@
 "TREND" = "趋势";
 "USD" = "USD";
 "Usage" = "用量";
+"Models" = "模型";
+"MODELS" = "模型";
+"Models shows local 5h and weekly activity" = "模型页显示本地 5 小时和本周活动。";
+"Provider hidden" = "服务已隐藏";
 "Updates" = "更新";
 "VALUE" = "价值";
 "Warn" = "警告";

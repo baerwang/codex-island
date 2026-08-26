@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Three-page horizontal carousel: live usage (page 0), cost (page 1), and
-/// history overview (page 2). Each page renders at the full content width;
+/// Four-page horizontal carousel: live usage, cost, model breakdown, and
+/// history overview. Each page renders at the full content width;
 /// the HStack slides via `.offset` based on
 /// `ScreenPref.screen`. Horizontal movement gets its own drawer-style curve
 /// so page navigation does not inherit the island shape's spring bounce.
@@ -27,6 +27,9 @@ struct PagedContent: View {
                     .offset(y: compactPageYOffset)
                     .frame(width: pageWidth)
                 CostView()
+                    .offset(y: compactPageYOffset)
+                    .frame(width: pageWidth)
+                ModelsView()
                     .offset(y: compactPageYOffset)
                     .frame(width: pageWidth)
                 OverviewView(model: model)
