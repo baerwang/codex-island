@@ -93,11 +93,11 @@ struct NotchPeekPill: View {
         }
     }
 
-    /// Spinner only fires for the cold-start case (loading AND we have nothing
-    /// to show). If we have a prior value, keep showing it during refresh —
-    /// same principle as UsageStore.isErrorOnly's "don't blank the panel" rule.
+    /// Spinner only fires for a true cold start. A real 0% window can still
+    /// have a reset time (for example Codex's fresh 5h window) and must keep
+    /// showing its useful remaining-time label while a refresh runs.
     private var showSpinner: Bool {
-        loading && usage.usedPercent == 0 && usage.error == nil
+        loading && usage.usedPercent == 0 && usage.error == nil && usage.resetAt == nil
     }
 
     private var showDash: Bool {
