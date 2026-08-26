@@ -50,10 +50,9 @@ enum CLIStatusProbe {
         let started = Date()
         var commandsSent = 0
         // Codex must finish drawing before its prompt marker can be trusted;
-        // Claude accepts queued slash commands as soon as its PTY starts.
-        // Claude's Status tab is the CLI-owned place that identifies the
-        // active account/plan; its Usage tab contains the quota bars. Both
-        // are collected in one bounded interactive session.
+        // Claude accepts a queued `/usage` command as soon as its PTY starts.
+        // Do not visit Claude's `/status` first: it opens Settings and can
+        // consume a subsequent slash command rather than returning Usage.
         var nextCommandAt = started.addingTimeInterval(request.provider == .codex ? 8 : 3)
         var lastOutputAt = started
         var sawPrompt = false
@@ -62,7 +61,7 @@ enum CLIStatusProbe {
         var childExited = false
         var cursorQueryTail = Data()
         var acceptedStatusWorkspaceTrust = false
-        let maximumAttempts = request.provider == .codex ? 3 : 2
+        let maximumAttempts = request.provider == .codex ? 3 : 1
         let timeout = request.provider == .codex ? 28.0 : 32.0
 
         while !childExited {
@@ -100,9 +99,7 @@ enum CLIStatusProbe {
                now >= nextCommandAt,
                now.timeIntervalSince(lastOutputAt) >= 0.25 {
                 switch request.provider {
-                case .claude:
-                    let command = commandsSent == 0 ? "/status\r" : "/usage\r"
-                    write(master, Data(command.utf8))
+                case .claude: write(master, Data("/usage\r".utf8))
                 // Codex's composer accepts the slash command on the first
                 // return and renders the status view on the confirmation
                 // return. A single return has repeatedly left this TUI on the
@@ -327,14 +324,6 @@ enum CLIStatusProbe {
         let primaryText = primary.rendered()
         if quotaScore(primaryText) > 0 { return primaryText }
         return strippedTerminalText(raw)
-    }
-
-    /// The sequential stream retains prior TUI screens after the terminal
-    /// renderer selects the final Usage screen. It is only paired with that
-    /// rendered screen to recover identity metadata from Claude's Status tab;
-    /// callers must never treat it as a layout-accurate screen.
-    static func sequentialText(_ raw: Data) -> String {
-        strippedTerminalText(raw)
     }
 
     private static func strippedTerminalText(_ raw: Data) -> String {

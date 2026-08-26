@@ -16,15 +16,7 @@ enum UsageFetcher {
             provider: .claude, executable: executable, proxyURL: configuration.0,
             workdir: configuration.1, codexHome: nil, codexFullAccess: false
         ))
-        // `terminalText` is the final Usage screen and accurately preserves
-        // its grid. `sequentialText` retains the preceding Status screen,
-        // where Claude writes the active account/plan. Keep the two inputs
-        // separate: raw redraw history must never influence quota parsing.
-        return CLIUsageParser.parseClaude(
-            transcript.text,
-            timedOut: transcript.timedOut,
-            metadataText: CLIStatusProbe.sequentialText(transcript.raw)
-        )
+        return CLIUsageParser.parseClaude(transcript.text, timedOut: transcript.timedOut)
     }
 
     static func fetchCodex(profile: CodexCLIProfile, workdir: String) async -> AppUsage {
@@ -81,9 +73,7 @@ enum UsageFetcher {
 }
 
 enum CLIUsageParser {
-    static func parseClaude(
-        _ text: String, timedOut: Bool, metadataText: String? = nil
-    ) -> AppUsage {
+    static func parseClaude(_ text: String, timedOut: Bool) -> AppUsage {
         // The rendered TUI uses box/block glyphs for separators and progress
         // bars. Normalize them to whitespace before matching its labels.
         let screen = text.replacingOccurrences(
@@ -124,7 +114,7 @@ enum CLIUsageParser {
         return AppUsage(
             fiveHour: window(used: session.percent, reset: session.reset),
             weekly: window(used: weekly.percent, reset: weekly.reset),
-            plan: claudePlan(in: metadataText ?? "") ?? claudePlan(in: text),
+            plan: claudePlan(in: text),
             windows: windows
         )
     }
