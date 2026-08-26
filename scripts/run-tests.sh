@@ -41,6 +41,15 @@ swiftc \
 
 swiftc \
   -parse-as-library \
+  -o "$OUT_DIR/codex-profile-config-tests" \
+  Sources/Model/PreferenceStorage.swift \
+  Sources/Model/CLIProviderConfig.swift \
+  Tests/CodexProfileConfigTests.swift
+
+"$OUT_DIR/codex-profile-config-tests"
+
+swiftc \
+  -parse-as-library \
   -o "$OUT_DIR/cli-usage-parser-tests" \
   Sources/Model/PreferenceStorage.swift \
   Sources/Model/CLIProviderConfig.swift \

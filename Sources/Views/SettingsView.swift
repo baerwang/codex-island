@@ -36,7 +36,7 @@ struct SettingsView: View {
     /// Renaming a profile should not open another interactive CLI session.
     private var codexStatusFingerprint: String {
         cliConfig.codexProfiles.map {
-            "\($0.id.uuidString)|\($0.codexHome)|\($0.proxyURL)|\($0.enabled)"
+            "\($0.id.uuidString)|\($0.codexHome)|\($0.proxyURL)|\($0.enabled)|\($0.effectiveQuotaMode.rawValue)"
         }
         .joined(separator: "\u{1E}")
     }
@@ -601,6 +601,19 @@ struct SettingsView: View {
                 .textFieldStyle(.roundedBorder)
             TextField("Optional proxy, e.g. http://127.0.0.1:7890", text: profile.proxyURL)
                 .textFieldStyle(.roundedBorder)
+            HStack(spacing: 8) {
+                Text("Quota mode")
+                    .font(Typography.caption)
+                    .foregroundStyle(.white.opacity(0.50))
+                Picker("", selection: quotaModeBinding(profile)) {
+                    ForEach(CodexQuotaMode.allCases, id: \.self) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                Spacer()
+            }
             Text(codexProfileCaption(reading))
                 .font(Typography.caption)
                 .foregroundStyle(.white.opacity(0.45))
@@ -652,6 +665,13 @@ struct SettingsView: View {
                     proposed, excluding: profile.wrappedValue.id
                 )
             }
+        )
+    }
+
+    private func quotaModeBinding(_ profile: Binding<CodexCLIProfile>) -> Binding<CodexQuotaMode> {
+        Binding(
+            get: { profile.wrappedValue.effectiveQuotaMode },
+            set: { profile.wrappedValue.quotaMode = $0 }
         )
     }
 

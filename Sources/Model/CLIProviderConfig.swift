@@ -1,6 +1,20 @@
 import Combine
 import Foundation
 
+enum CodexQuotaMode: String, CaseIterable, Codable, Sendable {
+    case auto
+    case subscription
+    case api
+
+    var label: String {
+        switch self {
+        case .auto: return "Auto"
+        case .subscription: return "Subscription"
+        case .api: return "API"
+        }
+    }
+}
+
 /// User-owned launch configuration for the provider CLIs. Credentials stay in
 /// those CLIs' own stores; CodexIsland persists only paths, display names and
 /// proxy URLs needed to launch a status-only interactive session.
@@ -10,16 +24,20 @@ struct CodexCLIProfile: Codable, Identifiable, Equatable, Sendable {
     var codexHome: String
     var proxyURL: String
     var enabled: Bool
+    /// Optional to keep previously saved profile JSON decodable. nil means
+    /// automatic detection from the CLI status screen.
+    var quotaMode: CodexQuotaMode?
 
     init(
         id: UUID = UUID(), name: String, codexHome: String,
-        proxyURL: String = "", enabled: Bool = true
+        proxyURL: String = "", enabled: Bool = true, quotaMode: CodexQuotaMode? = nil
     ) {
         self.id = id
         self.name = name
         self.codexHome = codexHome
         self.proxyURL = proxyURL
         self.enabled = enabled
+        self.quotaMode = quotaMode
     }
 
     var expandedHome: String {
@@ -36,6 +54,8 @@ struct CodexCLIProfile: Codable, Identifiable, Equatable, Sendable {
             .resolvingSymlinksInPath()
             .path
     }
+
+    var effectiveQuotaMode: CodexQuotaMode { quotaMode ?? .auto }
 }
 
 @MainActor

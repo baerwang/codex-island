@@ -19,7 +19,7 @@ struct UsageView: View {
 
     var body: some View {
         let claudeOn = visibility.claudeVisible
-        let codexOn = visibility.codexVisible
+        let codexOn = visibility.codexVisible && store.codexHasSubscriptionQuota
 
         HStack(spacing: 0) {
             switch (claudeOn, codexOn) {

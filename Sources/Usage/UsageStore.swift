@@ -23,6 +23,10 @@ final class UsageStore: ObservableObject {
 
     private init() {}
 
+    var codexHasSubscriptionQuota: Bool {
+        codex.fiveHour.hasReading || codex.weekly.hasReading
+    }
+
     private var pollInterval: TimeInterval {
         TimeInterval(RefreshIntervalStore.shared.seconds)
     }
@@ -50,24 +54,29 @@ final class UsageStore: ObservableObject {
                !profiles.contains(where: { $0.id == preferredCodexProfileID }) {
                 self.preferredCodexProfileID = nil
             }
-            // Interactive TUI probes are intentionally serialized. Launching
-            // several accounts at once multiplies proxy/CLI load and makes a
-            // user-visible status refresh harder to reason about; the 5m+
-            // cadence has ample room for one bounded session at a time.
-            let newClaude = await UsageFetcher.fetchClaude()
-            var profileReadings: [(UUID, AppUsage)] = []
+            // Every configured account owns an independent PTY, proxy and
+            // CODEX_HOME. Run those bounded status sessions together so one
+            // slow/API-only profile never delays another account's quota.
+            async let claudeResult = UsageFetcher.fetchClaude()
+            var immediateReadings: [(UUID, AppUsage)] = []
             var seenCodexHomes = Set<String>()
-            for profile in profiles {
-                guard !Task.isCancelled else { break }
-                if let home = profile.canonicalHome, !seenCodexHomes.insert(home).inserted {
-                    profileReadings.append((profile.id, UsageFetcher.errorPair("duplicate codex home")))
-                    continue
+            let profileReadings = await withTaskGroup(
+                of: (UUID, AppUsage).self, returning: [(UUID, AppUsage)].self
+            ) { group in
+                for profile in profiles {
+                    if let home = profile.canonicalHome, !seenCodexHomes.insert(home).inserted {
+                        immediateReadings.append((profile.id, UsageFetcher.errorPair("duplicate codex home")))
+                    } else {
+                        group.addTask {
+                            (profile.id, await UsageFetcher.fetchCodex(profile: profile, workdir: codexWorkdir))
+                        }
+                    }
                 }
-                profileReadings.append((
-                    profile.id,
-                    await UsageFetcher.fetchCodex(profile: profile, workdir: codexWorkdir)
-                ))
+                var output = immediateReadings
+                for await reading in group { output.append(reading) }
+                return output
             }
+            let newClaude = await claudeResult
             guard !Task.isCancelled, activeRefreshID == refreshID else {
                 finishRefresh(id: refreshID)
                 return

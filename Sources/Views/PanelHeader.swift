@@ -12,11 +12,13 @@ struct PanelHeader: View {
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
     @ObservedObject private var usageStore = UsageStore.shared
     @ObservedObject private var config = CLIProviderConfigStore.shared
+    @ObservedObject private var screenPref = ScreenPref.shared
 
     var body: some View {
         HStack(spacing: 0) {
             let claudeOn = visibility.claudeVisible
             let codexOn = visibility.codexVisible
+                && (screenPref.screen != .usage || usageStore.codexHasSubscriptionQuota)
             providerTitle(name: "Claude", tag: usageStore.claude.plan?.uppercased(),
                           color: IslandColor.claude, alignment: .leading) {
                 EmptyView()
@@ -41,7 +43,10 @@ struct PanelHeader: View {
 
     @ViewBuilder
     private var codexProfilePicker: some View {
-        let profiles = config.activeCodexProfiles
+        let profiles = config.activeCodexProfiles.filter {
+            guard let usage = usageStore.codexByProfile[$0.id] else { return false }
+            return usage.fiveHour.hasReading || usage.weekly.hasReading
+        }
         if profiles.count > 1 {
             Button {
                 usageStore.selectNextCodexProfile(in: profiles)

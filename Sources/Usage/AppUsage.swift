@@ -140,6 +140,7 @@ struct AppUsage {
         let configurationErrors: Set<String> = [
             "proxy required", "add codex profile", "codex home required",
             "duplicate codex home", "codex proxy invalid",
+            "subscription quota unavailable",
             "claude workdir required", "codex workdir required",
             "claude not found", "codex not found",
         ]

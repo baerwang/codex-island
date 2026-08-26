@@ -462,6 +462,7 @@ private struct LogoOverlay: View {
     let topPadding: CGFloat
 
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
+    @ObservedObject private var usageStore = UsageStore.shared
 
     var body: some View {
         // Hidden providers fully drop out — header / peek pill / chrome
@@ -488,6 +489,7 @@ private struct LogoOverlay: View {
 
     private var isVisible: Bool {
         visibility.effectiveVisible(provider: provider)
+            && (provider != .codex || usageStore.codexHasSubscriptionQuota)
     }
 
     private var providerLabel: String {
@@ -543,6 +545,7 @@ private struct PeekPillOverlay: View {
 
     private var isVisible: Bool {
         visibility.effectiveVisible(provider: provider)
+            && (provider != .codex || usageStore.codexHasSubscriptionQuota)
     }
 
     private var currentWindow: WindowUsage {

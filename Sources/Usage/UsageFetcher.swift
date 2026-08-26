@@ -20,6 +20,7 @@ enum UsageFetcher {
     }
 
     static func fetchCodex(profile: CodexCLIProfile, workdir: String) async -> AppUsage {
+        if profile.effectiveQuotaMode == .api { return apiOnlyUsage() }
         guard !profile.expandedHome.isEmpty,
               FileManager.default.fileExists(atPath: profile.expandedHome)
         else { return errorPair("codex home required") }
@@ -32,13 +33,25 @@ enum UsageFetcher {
             provider: .codex, executable: executable, proxyURL: proxy,
             workdir: workdir, codexHome: profile.expandedHome, codexFullAccess: false
         ))
-        return CLIUsageParser.parseCodex(transcript.text, timedOut: transcript.timedOut)
+        let usage = CLIUsageParser.parseCodex(transcript.text, timedOut: transcript.timedOut)
+        if profile.effectiveQuotaMode == .subscription, usage.plan == "api" {
+            return errorPair("subscription quota unavailable")
+        }
+        return usage
     }
 
     static func errorPair(_ message: String) -> AppUsage {
         AppUsage(
             fiveHour: WindowUsage(usedPercent: 0, resetAt: nil, error: message),
             weekly: WindowUsage(usedPercent: 0, resetAt: nil, error: message)
+        )
+    }
+
+    static func apiOnlyUsage() -> AppUsage {
+        AppUsage(
+            fiveHour: WindowUsage(usedPercent: 0, resetAt: nil, error: "API/custom mode — no subscription quota"),
+            weekly: WindowUsage(usedPercent: 0, resetAt: nil, error: "API/custom mode — no subscription quota"),
+            plan: "api"
         )
     }
 
@@ -133,11 +146,7 @@ enum CLIUsageParser {
             options: .regularExpression
         ) != nil
         if fiveHour == nil || weekly == nil, noSubscriptionLimits {
-            return AppUsage(
-                fiveHour: WindowUsage(usedPercent: 0, resetAt: nil, error: "API/custom mode — no subscription quota"),
-                weekly: WindowUsage(usedPercent: 0, resetAt: nil, error: "API/custom mode — no subscription quota"),
-                plan: "api"
-            )
+            return UsageFetcher.apiOnlyUsage()
         }
         guard let fiveHour, let weekly else {
             return UsageFetcher.errorPair(timedOut ? "codex timeout" : "status refresh pending")
