@@ -79,7 +79,7 @@ final class UsageStore: ObservableObject {
             if profiles.isEmpty {
                 codex = UsageFetcher.errorPair("add codex profile")
                 codexHeadlineProfileID = nil
-            } else if let headline = selectCodexHeadline(profiles: profiles, readings: nextProfiles) {
+            } else if let headline = CodexHeadlineSelection.select(profiles: profiles, readings: nextProfiles) {
                 // Quotas from accounts are never combined. The compact island
                 // shows one usable manually configured profile; Settings and
                 // the expanded quota list retain every profile separately.
@@ -90,7 +90,7 @@ final class UsageStore: ObservableObject {
                 codexHeadlineProfileID = nil
             }
             UsageHistoryStore.shared.record(provider: .claude, usage: newClaude, at: now)
-            if let headline = selectCodexHeadline(profiles: profiles, readings: nextProfiles) {
+            if let headline = CodexHeadlineSelection.select(profiles: profiles, readings: nextProfiles) {
                 UsageHistoryStore.shared.record(provider: .codex, usage: headline.usage, at: now)
             }
             lastUpdated = now
@@ -107,21 +107,6 @@ final class UsageStore: ObservableObject {
             refreshPending = false
             refresh()
         }
-    }
-
-    private func selectCodexHeadline(
-        profiles: [CodexCLIProfile], readings: [UUID: AppUsage]
-    ) -> (id: UUID, usage: AppUsage)? {
-        let candidates = profiles.compactMap { profile -> (UUID, AppUsage)? in
-            guard let usage = readings[profile.id] else { return nil }
-            return (profile.id, usage)
-        }
-        // Prefer an actual subscription reading. An API-key profile is a
-        // recognized state, but it has no quota and must not hide a later
-        // manually configured account that does report one.
-        return candidates.first {
-            $0.1.fiveHour.hasReading || $0.1.weekly.hasReading
-        } ?? candidates.first { $0.1.plan == "api" } ?? candidates.first
     }
 
     func startAutoRefresh() {

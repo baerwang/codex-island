@@ -29,6 +29,18 @@ swiftc \
 
 swiftc \
   -parse-as-library \
+  -o "$OUT_DIR/codex-headline-selection-tests" \
+  Sources/Model/PreferenceStorage.swift \
+  Sources/Model/CLIProviderConfig.swift \
+  Sources/Model/UsageDisplayModeStore.swift \
+  Sources/Usage/AppUsage.swift \
+  Sources/Usage/CodexHeadlineSelection.swift \
+  Tests/CodexHeadlineSelectionTests.swift
+
+"$OUT_DIR/codex-headline-selection-tests"
+
+swiftc \
+  -parse-as-library \
   -o "$OUT_DIR/cli-usage-parser-tests" \
   Sources/Model/PreferenceStorage.swift \
   Sources/Model/CLIProviderConfig.swift \
