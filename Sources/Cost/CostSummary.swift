@@ -74,7 +74,9 @@ enum CostSummary {
         // assumption — keep the broader guard.
         let earliestStart = min(monthStart, weekStart, historyStart)
         for event in events {
-            guard event.timestamp >= earliestStart else { continue }
+            // A clock-skewed local log must not make today's/month-to-date
+            // spend jump ahead of the current wall clock.
+            guard event.timestamp >= earliestStart, event.timestamp <= now else { continue }
             let cost = Pricing.cost(for: event)
             // Two parallel running totals: `tokens` is the wire-level sum
             // (ccusage parity); `billable` is input + output only, matching

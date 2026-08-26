@@ -51,6 +51,15 @@ struct ProjectCostTests {
         expect(canonicalized.projects.count == 1, "equivalent cwd spellings share one project row")
         expect(canonicalized.projects[0].todayTokens == 30, "canonical project row keeps combined tokens")
 
+        let futureExcluded = CostSummary.summarize(events: [
+            TokenEvent(
+                provider: .codex, timestamp: now.addingTimeInterval(3600), model: "gpt-5.6-terra",
+                inputTokens: 999, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0,
+                projectID: "/work/future", sourceID: "personal-home", sourceName: "Personal"
+            ),
+        ], now: now)
+        expect(futureExcluded.today.tokens == 0, "future-dated local event does not inflate today")
+
         print(failures == 0 ? "ALL PASS" : "\(failures) FAILURE(S)")
         exit(failures == 0 ? 0 : 1)
     }
