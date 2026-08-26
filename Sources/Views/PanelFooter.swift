@@ -20,6 +20,7 @@ struct PanelFooter: View {
     @ObservedObject private var screenPref = ScreenPref.shared
     @ObservedObject private var usageStore = UsageStore.shared
     @ObservedObject private var costStore = CostStore.shared
+    @ObservedObject private var visibility = ProviderVisibilityStore.shared
     @State private var liveStatusHovered = false
 
     var body: some View {
@@ -130,6 +131,21 @@ struct PanelFooter: View {
         }
     }
 
+    /// A completed poll is not a successful sync when every visible provider
+    /// lacks a real quota reading. Showing "Synced 0s ago" in that state hid
+    /// actionable errors such as a missing proxy or a CLI timeout.
+    private var activeStatusError: String? {
+        guard screenPref.screen == .usage else { return nil }
+        var visibleUsages: [AppUsage] = []
+        if visibility.claudeVisible { visibleUsages.append(usageStore.claude) }
+        if visibility.codexVisible { visibleUsages.append(usageStore.codex) }
+        guard !visibleUsages.isEmpty else { return nil }
+        guard !visibleUsages.contains(where: {
+            $0.fiveHour.hasReading || $0.weekly.hasReading
+        }) else { return nil }
+        return visibleUsages.compactMap { $0.fiveHour.error ?? $0.weekly.error }.first
+    }
+
     @ViewBuilder
     private var liveStatus: some View {
         // Click anywhere on the group → trigger a refetch of whichever
@@ -137,11 +153,19 @@ struct PanelFooter: View {
         // each store's refresh() prevent click-spam from stacking fetches.
         Button(action: triggerRefresh) {
             HStack(spacing: 6) {
-                LiveDot(active: activeLastUpdated != nil && !activeLoading)
+                LiveDot(active: activeLastUpdated != nil && !activeLoading && activeStatusError == nil)
                 if activeLoading {
                     Text(L10n.tr("Syncing…"))
                         .font(Typography.label)
                         .foregroundStyle(.white.opacity(0.55))
+                } else if let error = activeStatusError {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(Typography.micro)
+                        .foregroundStyle(IslandColor.alertAmber)
+                    Text(error)
+                        .font(Typography.label)
+                        .foregroundStyle(.white.opacity(0.60))
+                        .lineLimit(1)
                 } else if let updated = activeLastUpdated {
                     Text(L10n.tr("Synced"))
                         .font(Typography.label)
@@ -191,6 +215,7 @@ struct PanelFooter: View {
 
     private var liveStatusSpoken: String {
         if activeLoading { return L10n.tr("Syncing") }
+        if let error = activeStatusError { return error }
         if let updated = activeLastUpdated { return L10n.tr("Synced %@", relative(updated)) }
         return L10n.tr("Idle")
     }

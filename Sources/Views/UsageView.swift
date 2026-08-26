@@ -6,7 +6,7 @@ import AppKit
 /// while this row swipes between usage and cost screens.
 ///
 /// Branches on `(claudeOn, codexOn)` from `ProviderVisibilityStore`:
-///   - both on:  two `ChartsBlock`s with a hairline divider (default).
+///   - both on:  two provider blocks with a hairline divider (default).
 ///   - one on:   the live block on its native side, hairline, then a
 ///               per-model token breakdown filling the freed half.
 ///   - both off: a centered `BothHiddenPlaceholder`.
@@ -24,13 +24,14 @@ struct UsageView: View {
         HStack(spacing: 0) {
             switch (claudeOn, codexOn) {
             case (true, true):
-                ChartsBlock(color: IslandColor.claude, usage: store.claude,
-                            style: style, seed: 1, provider: .claude)
+                ProviderUsageBlock(usage: store.claude, style: style,
+                                   seed: 1, provider: .claude)
                 hairline
-                CodexUsageBlock(usage: store.codex, style: style)
+                ProviderUsageBlock(usage: store.codex, style: style,
+                                   seed: 3, provider: .codex)
             case (true, false):
-                ChartsBlock(color: IslandColor.claude, usage: store.claude,
-                            style: style, seed: 1, provider: .claude)
+                ProviderUsageBlock(usage: store.claude, style: style,
+                                   seed: 1, provider: .claude)
                 hairline
                 PerModelBreakdown(provider: .claude, metric: .tokens)
                     .frame(maxWidth: .infinity, alignment: .top)
@@ -42,7 +43,8 @@ struct UsageView: View {
                     .padding(.horizontal, 12)
                     .transition(breakdownTransition)
                 hairline
-                CodexUsageBlock(usage: store.codex, style: style)
+                ProviderUsageBlock(usage: store.codex, style: style,
+                                   seed: 3, provider: .codex)
             case (false, false):
                 BothHiddenPlaceholder()
                     .transition(.opacity)
@@ -73,16 +75,26 @@ struct UsageView: View {
     }
 }
 
-/// API/custom Codex providers can legitimately expose no subscription quota.
-/// Make that state explicit instead of rendering two empty black charts.
-struct CodexUsageBlock: View {
+/// API/custom and managed-platform logins legitimately expose no subscription
+/// quota. Make that state explicit instead of rendering two empty charts.
+struct ProviderUsageBlock: View {
     let usage: AppUsage
     let style: ChartStyle
+    let seed: Int
+    let provider: AlertEngine.Provider
+
+    private var hasNoSubscriptionQuota: Bool {
+        usage.plan == "api" || usage.plan == "third-party"
+    }
+
+    private var title: String {
+        usage.plan == "third-party" ? "Managed platform" : "API/custom"
+    }
 
     var body: some View {
-        if usage.plan == "api" {
+        if hasNoSubscriptionQuota {
             VStack(alignment: .leading, spacing: 7) {
-                Text("API/custom")
+                Text(title)
                     .font(Typography.rowTitle)
                     .foregroundStyle(.white.opacity(0.85))
                 Text("No subscription quota")
@@ -96,8 +108,10 @@ struct CodexUsageBlock: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.horizontal, 12)
         } else {
-            ChartsBlock(color: IslandColor.codex, usage: usage,
-                        style: style, seed: 3, provider: .codex)
+            ChartsBlock(
+                color: provider == .claude ? IslandColor.claude : IslandColor.codex,
+                usage: usage, style: style, seed: seed, provider: provider
+            )
         }
     }
 }

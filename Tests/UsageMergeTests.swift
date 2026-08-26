@@ -102,6 +102,19 @@ struct UsageMergeTests {
         expect(!apiCleared.fiveHour.hasReading, "API mode clears stale subscription quota")
         expect(apiCleared.plan == "api", "API mode is retained as a recognized state")
 
+        let thirdParty = AppUsage(
+            fiveHour: errored("API/custom mode — no subscription quota"),
+            weekly: errored("API/custom mode — no subscription quota"), plan: "third-party"
+        )
+        let thirdPartyCleared = AppUsage.merged(fetched: thirdParty, retaining: good, at: now)
+        expect(!thirdPartyCleared.fiveHour.hasReading, "third-party mode clears stale subscription quota")
+        expect(thirdPartyCleared.plan == "third-party", "third-party mode is retained as a recognized state")
+
+        let signedOut = pair(errored("not logged in"), errored("not logged in"))
+        let signedOutCleared = AppUsage.merged(fetched: signedOut, retaining: good, at: now)
+        expect(!signedOutCleared.fiveHour.hasReading, "signed-out state clears stale subscription quota")
+        expect(signedOutCleared.fiveHour.error == "not logged in", "signed-out state remains actionable")
+
         // Past its own reset, a carried value describes a window that no
         // longer exists — release it rather than show a confident stale number.
         let expiring = pair(reading(0.16, resetIn: 60), reading(0.11, resetIn: 5 * 86400))

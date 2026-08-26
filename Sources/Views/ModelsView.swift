@@ -65,6 +65,8 @@ struct ModelsView: View {
     private func shortWeeklyLabel(_ label: String) -> String {
         let lower = label.lowercased()
         if lower.contains("fable") { return "Fable" }
+        if lower.contains("sonnet") { return "Sonnet" }
+        if lower.contains("opus") { return "Opus" }
         if lower.contains("all models") { return L10n.tr("All") }
         if lower.hasPrefix("weekly") { return L10n.tr("Account") }
         if lower.contains("model") { return L10n.tr("Model") }

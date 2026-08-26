@@ -125,7 +125,7 @@ struct AppUsage {
         // A missing proxy/profile/workdir is a deliberate configuration state,
         // not a transient CLI failure. Never keep a previous percentage on
         // screen after the user disables the only allowed launch path.
-        if isConfigurationFailure(fetched) || fetched.plan == "api" { return fetched }
+        if isImmediateReplacement(fetched) { return fetched }
         return AppUsage(
             fiveHour: carryForward(fetched.fiveHour, prior: prior.fiveHour, at: now),
             weekly: carryForward(fetched.weekly, prior: prior.weekly, at: now),
@@ -136,13 +136,15 @@ struct AppUsage {
         )
     }
 
-    private static func isConfigurationFailure(_ usage: AppUsage) -> Bool {
+    private static func isImmediateReplacement(_ usage: AppUsage) -> Bool {
+        if usage.plan == "api" || usage.plan == "third-party" { return true }
         let configurationErrors: Set<String> = [
             "proxy required", "add codex profile", "codex home required",
             "duplicate codex home", "codex proxy invalid",
             "subscription quota unavailable",
             "claude workdir required", "codex workdir required",
             "claude not found", "codex not found",
+            "not logged in",
         ]
         return configurationErrors.contains(usage.fiveHour.error ?? "")
             && configurationErrors.contains(usage.weekly.error ?? "")

@@ -532,7 +532,7 @@ struct SettingsView: View {
             sectionLabel("CLI status")
             SettingsRow(
                 title: "Claude proxy",
-                subtitle: "Required for Claude /usage. Empty means no CLI status request."
+                subtitle: "Required for Claude /status. Empty means no CLI status request."
             ) {
                 TextField("http://127.0.0.1:7897", text: $cliConfig.claudeProxyURL)
                     .textFieldStyle(.roundedBorder)

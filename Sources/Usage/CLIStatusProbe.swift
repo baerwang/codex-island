@@ -234,7 +234,7 @@ enum CLIStatusProbe {
     /// Render the final TUI frame instead of merely deleting ANSI codes.
     /// Claude and Codex both position text with CSI cursor commands; dropping
     /// those commands joins unrelated cells (for example `Resets1:40pm`) and
-    /// makes a real `/usage` response look like a parse failure.
+    /// makes a real `/status` response look like a parse failure.
     ///
     /// This intentionally implements only the tiny VT100 subset emitted by
     /// the two status screens: cursor movement, erasing, alternate screen,

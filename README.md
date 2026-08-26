@@ -40,18 +40,17 @@ calls provider usage/OAuth endpoints itself.
 - **Hover to peek.** The silhouette widens just enough to show each visible
   provider's 5-hour percentage and reset headline, or keep those headlines
   visible at rest with **Always show usage**.
-- **Three swipeable screens.** Click to expand, then swipe between **Usage**,
-  **Cost**, and **Overview**. Cost estimates today and month-to-date spend and
-  token throughput from local Claude Code, Codex CLI, and OpenCode session
-  data. Overview renders the current year's activity as a contribution-style
+- **Four swipeable screens.** Click to expand, then swipe between **Usage**,
+  **Cost**, **Models**, and **Overview**. Cost estimates today and month-to-date
+  spend and token throughput from local Claude Code, Codex CLI, and OpenCode
+  session data. Models keeps provider quota windows and local model throughput
+  together; Overview renders the current year's activity as a contribution-style
   calendar.
 - **Used or remaining quota.** Display provider windows as usage consumed or
   quota remaining.
 - **Approaching-limit alerts.** Optional warning and critical thresholds tint
   the island and pulse the peek pill as a visible 5-hour window nears its
   limit.
-- **Codex reset credits.** When reset credits are available, the Usage footer
-  shows their count and expiration details.
 - **Configurable token counting.** The TOKENS hero can sum every token type
   that crossed the wire (cache included, ccusage parity) or input + output
   only — the latter matches Anthropic's claude.ai stats panel.
@@ -134,8 +133,9 @@ the CLI first, then configure the required Claude proxy and any optional
 Codex proxy:
 
 - **Claude:** enter a valid HTTP(S) proxy in Settings. The app launches
-  `claude`, sends `/usage`, and parses its Current session, all-model weekly,
-  and Fable weekly windows. An empty proxy disables the request.
+  `claude`, sends `/status`, and parses the CLI-reported login method plus its
+  Current session, all-model weekly, and model-specific weekly windows. An
+  empty proxy disables the request.
 - **Codex:** add every account explicitly in Settings; each profile needs a
   display name and `CODEX_HOME`, plus an optional HTTP(S) proxy. When blank,
   CodexIsland clears inherited proxy variables so that profile runs directly.
@@ -157,7 +157,7 @@ opening Settings alone does not start another CLI session.
 - Hover the notch to peek at the current 5-hour usage.
 - Click the island to expand the full panel.
 - Swipe horizontally on the panel (or use the indicator dots) to move between
-  **Usage**, **Cost**, and **Overview**.
+  **Usage**, **Cost**, **Models**, and **Overview**.
 - Move away to collapse it.
 - Command-click the expanded panel to cycle chart styles on the active screen
   (Usage cycles Ring/Bar/Stepped/Numeric/Sparkline; Cost cycles

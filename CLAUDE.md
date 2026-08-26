@@ -4,7 +4,9 @@ Project-specific guardrails. **Read every section before touching this repo.**
 
 ## Release process — MANDATORY
 
-This app ships via Sparkle auto-update. Get any of this wrong and you brick auto-update for everyone who's already installed.
+Sparkle release tooling remains available, but runtime update checks are
+disabled in the shipped app. Keep release artifacts valid without re-enabling
+runtime update behavior unless explicitly requested.
 
 ### The loop (3 commands)
 
@@ -51,18 +53,10 @@ These two GitHub Actions secrets exist on the `codex-island` repo:
 
 If either is rotated, regenerate via the original instructions in `docs/SPARKLE.md`.
 
-### Smoke-testing the update prompt locally
+### Runtime update behavior
 
-If you want to verify Sparkle's UI before tagging:
-
-```sh
-./release.sh                  # produces dist/CodexIsland-X.Y.Z.dmg + dist/appcast.xml
-                              # (uses Keychain key — no env vars needed locally)
-```
-
-The local `release.sh` is identical to CI except for asset upload. To force-trigger an update prompt without publishing: temporarily change `SUFeedURL` in `build.sh` to point at `http://127.0.0.1:8765/appcast.xml`, serve `dist/appcast.xml` from there with `python3 -m http.server 8765`, run with a lower local `VERSION` than the appcast advertises, hit Check Now.
-
-To build with auto-update **disabled** (debug copies): `SU_FEED_URL= ./build.sh`.
+Do not add a runtime update prompt or scheduler. `AppDelegate` deliberately
+does not create an updater; Sparkle is retained only for release packaging.
 
 ### Things that have already broken and how they were fixed
 
@@ -77,16 +71,14 @@ History — read before re-stepping on these rakes:
 | `…` after `$VAR` in shell scripts | CI fails with `unbound variable` | Non-UTF-8 locale on runners makes bash include trailing bytes in identifier | Use `${VAR}…` braces, or stick to ASCII in echo strings |
 | Old yonsei email in commits | Vercel rejected landing deploys | Local git config used unverified email | Set `git config user.email` to a GitHub-verified address before committing |
 | Landing tried to read `../VERSION` | Vercel build ENOENT'd at `/vercel/VERSION` | Landing is its own repo; Vercel only checks out `codex-island-landing`, so `..` escapes the build root | Landing has its own `VERSION` file, read with `path.join(process.cwd(), "VERSION")` — sync it on every release |
-| Claude usage chip showing `HTTP 403` | Existing installs stop showing real numbers post-upgrade | Anthropic added `user:profile` to the required scope set on `/api/oauth/usage` (mid-2026) — pre-upgrade keychain tokens only carry `user:inference` | User runs `claude /login` to re-mint with the new scope set; app surfaces "re-login: claude /login" instead of raw HTTP code |
-| "Always Allow" keychain grants dying within hours | ACL password prompt returns hours after granting, same app version | Claude Code's ~8h `security add-generic-password -U` rewrite resets the item's partition list to `apple-tool:`, silently wiping per-app grants (a Developer ID signature would not survive it either) | Keychain secret reads go through `/usr/bin/security` (permanently in the `apple-tool:` partition + item ACL) as PRIMARY; in-process SecItem read is fallback-only |
-| Refresh URL pinned to `console.anthropic.com` | Refresh path silently 404s on tokens minted by current CLI | OAuth issuer migrated to `platform.claude.com/v1/oauth/token`; old host is no longer the canonical issuer | Refresh URL bumped to `platform.claude.com` |
 
 ## Architecture pointers
 
 - `Sources/Window/IslandWindowController.swift` — borderless overlay window. Listens to `NSApplication.didChangeScreenParametersNotification` to reposition on display changes; prefers the screen with `safeAreaInsets.top > 0` (the notched display).
-- `Sources/Update/UpdaterController.swift` — wraps Sparkle's `SPUStandardUpdaterController`. Reads `SUFeedURL` / `SUPublicEDKey` from Info.plist (injected by `build.sh`). Auto-check state is stored by Sparkle itself in `NSUserDefaults` under `SU*` keys.
-- `Sources/Usage/UsageFetcher.swift` — Codex (`/wham/usage`) and Claude (`/api/oauth/usage`) fetchers. Claude requires the `claude-code/X.Y.Z` User-Agent + `oauth-2025-04-20` beta header. Claude token handling is STRICTLY READ-ONLY (`ClaudeCredentials`): the app never calls the OAuth refresh endpoint and never writes the keychain. Anthropic rotates the refresh token on every refresh call and revokes the whole token family on old-token reuse, so a second refresher racing Claude Code invalidates the user's CLI login (this happened — do not reintroduce refresh). A 401 on the cached access token re-reads the store and retries once in the same pass (Claude Code rotates the token ~8h and our in-memory copy goes stale); only when the store itself holds a dead token does the app surface "token expired — run claude" until Claude Code refreshes it. Desktop-app Claude Code never maintains the CLI store (it injects a host-refreshed `CLAUDE_CODE_OAUTH_TOKEN` into its embedded CLI; its own tokens live in Chromium Safe Storage the app must not read), so on desktop-only days that expiry is permanent — `UsageStore` then spawns ONE detached `claude -p "ok" --model haiku --strict-mcp-config` ping per expiry episode to make the CLI refresh + write back itself, and a metadata-only credential-store fingerprint watch (5s tick, never prompts) refetches the moment the store changes. The ping is the CLI refreshing its own family — it is NOT the app calling the refresh endpoint, which stays forbidden. Credential sources, in order: env token → keychain items DISCOVERED by attributes-only enumeration matching service `Claude Code-credentials` or `Claude Code-credentials-*` (the CLI hashes a suffix per custom `CLAUDE_CONFIG_DIR`; we match what exists instead of recomputing its private formula, and secret reads go through `/usr/bin/security` FIRST — see the rake table) → `$CLAUDE_CONFIG_DIR/.credentials.json` as fallback (Claude Code 2.x maintains the keychain as primary on macOS and deletes/strands the file when the keychain works, so a coexisting file is the stale store). The usage endpoint also requires the `user:profile` scope as of mid-2026 — tokens from older logins return 403 and the only fix is `claude /login`.
-- `Sources/Usage/AppUsage.swift` — `plan` field carries Claude's `subscriptionType` (from keychain) or Codex's `plan_type` (from API top-level). Surfaced as the chip badge in `SettingsView` + `UsageView`.
+- `Sources/App.swift` — launches the overlay and local stores; runtime Sparkle checks stay disabled.
+- `Sources/Usage/CLIStatusProbe.swift` — bounded PTY sessions. Claude and Codex each receive only `/status`; the probe never sends a prompt or reads credentials.
+- `Sources/Usage/UsageFetcher.swift` — validates launch context and parses status text. It never reads `auth.json`, Keychain entries, OAuth tokens, or provider HTTP endpoints.
+- `Sources/Usage/AppUsage.swift` — retains parsed plan/login state and independent quota windows. API, third-party, and signed-out states clear old subscription readings immediately.
 
 ## Build details
 
@@ -97,7 +89,6 @@ History — read before re-stepping on these rakes:
 ## What NOT to change without explicit user request
 
 - The `5m / 15m / 30m` polling presets (`Sources/Model/RefreshIntervalStore.swift`) — Anthropic rate-limits aggressively. Anything below 5m burns the daily quota.
-- The `claude-code/X.Y.Z` User-Agent string — Anthropic gates `/api/oauth/usage` on it. Without it, requests 401 even with a valid token.
 - The bundle ID `dev.codexisland.CodexIsland` — changing it orphans every existing user's preferences and Launch-at-Login registration.
 - The `SU_PUBLIC_KEY` constant in `build.sh`. See hard rule #2.
 

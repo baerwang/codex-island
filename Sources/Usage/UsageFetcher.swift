@@ -35,7 +35,7 @@ enum UsageFetcher {
         ))
         let usage = CLIUsageParser.parseCodex(transcript.text, timedOut: transcript.timedOut)
         if profile.effectiveQuotaMode == .subscription, usage.plan == "api" {
-            return errorPair("subscription quota unavailable")
+            return noSubscriptionUsage(plan: "api", message: "subscription quota unavailable")
         }
         return usage
     }
@@ -48,11 +48,21 @@ enum UsageFetcher {
     }
 
     static func apiOnlyUsage() -> AppUsage {
+        noSubscriptionUsage(plan: "api")
+    }
+
+    static func noSubscriptionUsage(
+        plan: String, message: String = "API/custom mode — no subscription quota"
+    ) -> AppUsage {
         AppUsage(
-            fiveHour: WindowUsage(usedPercent: 0, resetAt: nil, error: "API/custom mode — no subscription quota"),
-            weekly: WindowUsage(usedPercent: 0, resetAt: nil, error: "API/custom mode — no subscription quota"),
-            plan: "api"
+            fiveHour: WindowUsage(usedPercent: 0, resetAt: nil, error: message),
+            weekly: WindowUsage(usedPercent: 0, resetAt: nil, error: message),
+            plan: plan
         )
+    }
+
+    static func unauthenticatedUsage() -> AppUsage {
+        errorPair("not logged in")
     }
 
     private static func executable(named name: String) -> String? {
@@ -87,11 +97,13 @@ enum CLIUsageParser {
             in: screen,
             pattern: #"(?is)Current\s+week\s*\(all\s+models\).*?(\d{1,3})%\s*used.*?Resets\s*([^\r\n]+)"#
         )
-        let fable = reading(
-            in: screen,
-            pattern: #"(?is)Current\s+week\s*\(Fable\).*?(\d{1,3})%\s*used.*?Resets\s*([^\r\n]+)"#
-        )
-        // At the moment the Usage tab has finished drawing, the first two
+        let modelWeeks = modelWeekReadings(in: screen)
+        let plan = claudePlan(in: text)
+        if isUnauthenticated(text) { return UsageFetcher.unauthenticatedUsage() }
+        if let plan, isNonSubscriptionPlan(plan) {
+            return UsageFetcher.noSubscriptionUsage(plan: plan)
+        }
+        // At the moment the Status tab has finished drawing, the first two
         // percent/reset pairs are necessarily current-session then all-model
         // week. This fallback handles Claude redraws that overwrite part of
         // the label while preserving label-first parsing for normal text.
@@ -102,19 +114,33 @@ enum CLIUsageParser {
         guard let session = session ?? ordered.first,
               let weekly = weekly ?? ordered.dropFirst().first
         else {
-            return UsageFetcher.errorPair(timedOut ? "claude timeout" : "usage parse error")
+            return UsageFetcher.errorPair(timedOut ? "claude timeout" : "status parse error")
         }
         var windows = [
             detail(id: "claude.current", label: "Current session", reading: session),
             detail(id: "claude.week.all", label: "Current week (all models)", reading: weekly),
         ]
-        if let fable = fable ?? ordered.dropFirst(2).first {
-            windows.append(detail(id: "claude.week.fable", label: "Current week (Fable)", reading: fable))
+        if !modelWeeks.isEmpty {
+            for (index, modelWeek) in modelWeeks.enumerated() {
+                windows.append(detail(
+                    id: "claude.week.model.\(quotaID(modelWeek.label, fallback: index))",
+                    label: "Current week (\(modelWeek.label))",
+                    reading: (modelWeek.percent, modelWeek.reset)
+                ))
+            }
+        } else if let additionalWeek = ordered.dropFirst(2).first {
+            // A damaged redraw can hide the parenthetical model label while
+            // leaving an ordered third window. Preserve the value without
+            // inventing a model name such as Fable.
+            windows.append(detail(
+                id: "claude.week.model.unknown",
+                label: "Current week (model-specific)", reading: additionalWeek
+            ))
         }
         return AppUsage(
             fiveHour: window(used: session.percent, reset: session.reset),
             weekly: window(used: weekly.percent, reset: weekly.reset),
-            plan: claudePlan(in: text),
+            plan: plan,
             windows: windows
         )
     }
@@ -140,6 +166,7 @@ enum CLIUsageParser {
         // in `windows`, but must not replace the compact account-week card.
         let weekly = weekReadings.first
         let plan = codexPlan(in: text)
+        if isUnauthenticated(text) { return UsageFetcher.unauthenticatedUsage() }
         // API-key sessions have no subscription quota by design. Treat this
         // as a recognized state instead of asking the user to retry a status
         // screen that cannot contain 5h/weekly limits. Local-log cost/token
@@ -148,8 +175,8 @@ enum CLIUsageParser {
             of: #"(?i)(api[- ]key|limits:\s*data\s+not\s+available|model\s+provider:)"#,
             options: .regularExpression
         ) != nil
-        if fiveHour == nil || weekly == nil, noSubscriptionLimits {
-            return UsageFetcher.apiOnlyUsage()
+        if noSubscriptionLimits {
+            return UsageFetcher.noSubscriptionUsage(plan: "api")
         }
         guard let fiveHour, let weekly else {
             return UsageFetcher.errorPair(timedOut ? "codex timeout" : "status refresh pending")
@@ -167,6 +194,17 @@ enum CLIUsageParser {
         )
     }
 
+    private static func isUnauthenticated(_ text: String) -> Bool {
+        text.range(
+            of: #"(?i)(not\s+logged\s+in|please\s+(?:run\s+)?/?login|authentication\s+(?:required|failed))"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    private static func isNonSubscriptionPlan(_ plan: String) -> Bool {
+        plan == "api" || plan == "third-party"
+    }
+
     private static func window(used: Int, reset: String) -> WindowUsage {
         WindowUsage(
             usedPercent: min(1, max(0, Double(used) / 100)),
@@ -179,6 +217,34 @@ enum CLIUsageParser {
             id: id, label: label, usedPercent: Double(reading.percent) / 100,
             resetAt: resetDate(reading.reset)
         )
+    }
+
+    private static func modelWeekReadings(
+        in text: String
+    ) -> [(label: String, percent: Int, reset: String)] {
+        let pattern = #"(?is)Current\s+week\s*\((?!all\s+models\))([^\)]+)\).*?(\d{1,3})%\s*used.*?Resets\s*([^\r\n]+)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(text.startIndex..., in: text)
+        var seen = Set<String>()
+        return regex.matches(in: text, range: range).compactMap { match in
+            guard match.numberOfRanges >= 4,
+                  let labelRange = Range(match.range(at: 1), in: text),
+                  let percentRange = Range(match.range(at: 2), in: text),
+                  let percent = Int(text[percentRange]),
+                  let resetRange = Range(match.range(at: 3), in: text)
+            else { return nil }
+            let label = String(text[labelRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let reset = String(text[resetRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !label.isEmpty, seen.insert("\(label)::\(percent)::\(reset)").inserted else { return nil }
+            return (label, percent, reset)
+        }
+    }
+
+    private static func quotaID(_ label: String, fallback: Int) -> String {
+        let slug = label.lowercased().replacingOccurrences(
+            of: #"[^a-z0-9]+"#, with: "-", options: .regularExpression
+        ).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return slug.isEmpty ? "\(fallback)" : slug
     }
 
     private static func reading(in text: String, pattern: String, remaining: Bool = false) -> (percent: Int, reset: String)? {

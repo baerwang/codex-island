@@ -27,6 +27,17 @@ struct CLIUsageParserTests {
         expect(claude.windows.allSatisfy { $0.resetAt != nil }, "Claude timezone-tagged resets parse")
         expect(claude.plan == "max", "Claude plan parses")
 
+        let claudeSonnetWindow = CLIUsageParser.parseClaude("""
+        Current session 8% used Resets 1:40pm (Asia/Shanghai)
+        Current week (all models) 35% used Resets Aug 31 at 12pm (Asia/Shanghai)
+        Current week (Sonnet only) 61% used Resets Aug 31 at 12pm (Asia/Shanghai)
+        """, timedOut: false)
+        expect(claudeSonnetWindow.windows.count == 3, "Claude model-specific weekly window is retained")
+        expect(
+            claudeSonnetWindow.windows.last?.label == "Current week (Sonnet only)",
+            "Claude model-specific window keeps its real label"
+        )
+
         let claudeStatusPlan = CLIUsageParser.parseClaude("""
         Account: user@example.com (Claude Max 20x)
         Current session
@@ -78,6 +89,13 @@ struct CLIUsageParserTests {
         Current week (all models) 35% used Resets Aug 31 at 12pm
         """, timedOut: false)
         expect(claudeConsole.plan == "api", "Claude Console login is not mislabeled as subscription")
+        expect(!claudeConsole.fiveHour.hasReading, "Claude Console ignores subscription-like status text")
+
+        let claudeConsoleNoQuota = CLIUsageParser.parseClaude(
+            "Login method: Anthropic Console account", timedOut: false
+        )
+        expect(claudeConsoleNoQuota.plan == "api", "Claude Console without plan windows remains API mode")
+        expect(!claudeConsoleNoQuota.fiveHour.hasReading, "Claude Console does not fabricate subscription quota")
 
         let claudeBedrock = CLIUsageParser.parseClaude("""
         Login method: 3rd-party platform · Amazon Bedrock
@@ -85,6 +103,17 @@ struct CLIUsageParserTests {
         Current week (all models) 35% used Resets Aug 31 at 12pm
         """, timedOut: false)
         expect(claudeBedrock.plan == "third-party", "Claude managed-platform login is identified")
+        expect(!claudeBedrock.fiveHour.hasReading, "Claude managed platform ignores subscription-like status text")
+
+        let claudeSignedOut = CLIUsageParser.parseClaude(
+            "Not logged in · Please run /login", timedOut: false
+        )
+        expect(claudeSignedOut.fiveHour.error == "not logged in", "Claude signed-out status is actionable")
+
+        let codexSignedOut = CLIUsageParser.parseCodex(
+            "Not logged in. Please run /login", timedOut: false
+        )
+        expect(codexSignedOut.fiveHour.error == "not logged in", "Codex signed-out status is actionable")
 
         let codex = CLIUsageParser.parseCodex("""
         Account: user@example.com (Pro)

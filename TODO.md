@@ -1,13 +1,12 @@
 # 需求 TODO：本地 CLI 状态、账号配置与项目消耗统计
 
-> 状态：实现完成，验收清单持续复审中。本文中的“额度”均指 Claude Code `/usage` 与 Codex
+> 状态：实现完成，验收清单持续复审中。本文中的“额度”均指 Claude Code 与 Codex
 > `/status` 所报告的订阅限额状态；本应用不得直接通过 HTTP API、OAuth token 或本地
 > 凭据读取服务商额度。允许由用户本机已登录的 Claude/Codex CLI 自身经代理访问服务商。
 
 ## 0. 不可违反的约束
 
-- [x] 额度读取只能通过启动本机 `claude` 和 `codex` 的**交互会话**、分别发送 `/usage`
-  与 `/status`、
+- [x] 额度读取只能通过启动本机 `claude` 和 `codex` 的**交互会话**、分别发送 `/status`、
   解析终端输出完成。CLI 自身的、经用户配置代理进行的服务商访问是允许且预期的。
 - [x] 本应用自身禁止访问 Claude、OpenAI/Codex 的 HTTP 用量、重置额度或 OAuth endpoint。
 - [x] 禁止读取、缓存、传输或刷新 OAuth access token / refresh token；不得读取
@@ -26,15 +25,15 @@
 - [x] 本次为直接重构：不保留旧 HTTP/OAuth 用量实现、旧缓存、历史数据迁移、兼容分支或
   回退路径。新版本只认可新的 CLI `/status` 与本地日志数据模型。
 
-## 1. Claude Code 额度：通过交互 `/usage` 获取
+## 1. Claude Code 额度：通过交互 `/status` 获取
 
 - [x] 删除当前 Claude OAuth 凭据解析、Keychain 访问、token 刷新辅助逻辑及
   `https://api.anthropic.com/api/oauth/usage` 请求。
-- [x] 用 PTY 启动 `claude` 交互会话，待初始界面绘制后写入 `/usage` 与换行，捕获终端渲染的
+- [x] 用 PTY 启动 `claude` 交互会话，待初始界面绘制后写入 `/status` 与换行，捕获终端渲染的
   状态，随后发终端 `SIGINT` 请求退出；失败或超时时终止子进程组。
-- [x] `/usage` 调用不得附带自然语言 prompt、模型任务、工具调用或任何会产生 token 消耗的
+- [x] `/status` 调用不得附带自然语言 prompt、模型任务、工具调用或任何会产生 token 消耗的
   参数；不得使用 `claude -p/--print` 模拟状态查询。
-- [x] 以受控的真实界面形态与脱敏离线 fixture 确认：目标 Claude Code 版本的 `/usage` 不会
+- [x] 以受控的真实界面形态与脱敏离线 fixture 确认：目标 Claude Code 版本的 `/status` 不会
   开启模型 turn，且输出可稳定识别；若不满足，显示解析错误，不会偷偷退回 HTTP API。
 - [x] 新增 Claude 独立代理配置。执行时必须同时注入：
 
@@ -45,8 +44,8 @@
 
 - [x] Claude 代理为空时，状态刷新被阻止，并在灵动岛和设置页显示“proxy required”；不会
   把它显示成额度为 0。
-- [x] 从 CLI `/usage` 解析并显示可用的限额窗口、已用/剩余比例、重置时间、套餐
-  信息和原始状态错误。若 CLI 不提供某个字段，UI 显示“CLI 未提供”，不可推测。
+- [x] 从 CLI `/status` 解析并显示可用的限额窗口、已用/剩余比例、重置时间、`Login method`
+  所报告的套餐/认证模式和原始状态错误。若 CLI 不提供某个字段，UI 显示“CLI 未提供”，不可推测。
 - [x] 限额数据模型保留 CLI 报告的真实窗口时长和窗口标识，支持任意数量的窗口；不得
   再把所有结果强制映射为现有的固定“5 小时 + 7 天”两个字段。
 
@@ -119,8 +118,8 @@
 ## 4. 轮询与状态生命周期
 
 - [x] 保留 5 / 15 / 30 分钟的安全刷新档位和“单次刷新不重叠”的保护，但刷新对象改为
-  Claude/Codex PTY 交互会话中的 `/usage` / `/status`，不再调用应用侧网络 endpoint。
-- [x] 抽取共享的 CLI 状态探测器：启动 PTY → 等待初始界面 → 写入 `/usage` / `/status` → 等待完整输出
+  Claude/Codex PTY 交互会话中的 `/status`，不再调用应用侧网络 endpoint。
+- [x] 抽取共享的 CLI 状态探测器：启动 PTY → 等待初始界面 → 写入 `/status` → 等待完整输出
   → 解析 ANSI/终端屏幕 → `SIGINT`/超时清理。Claude 与每个 Codex 配置项复用同一状态机。
 - [x] 解析器从 ANSI/VT 控制序列、加载动画、终端换行和不同窗口尺寸中恢复可测试的纯文本；
   固定 PTY 尺寸，避免因自动折行破坏字段识别。
@@ -142,7 +141,7 @@
 
 ## 5. 移除 Sparkle 自动更新
 
-- [x] 注释掉应用启动时的 `UpdaterController` 初始化及 Sparkle 自动调度。
+- [x] 禁用应用启动时的 Sparkle updater 初始化及自动调度。
 - [x] 注释或禁用设置页的检查更新入口、相关文案和自动更新状态；运行时不再检查或下载更新。
 - [x] 保留现有 Sparkle 构建/发布依赖、文档和脚本，不改变发布流程；只禁用应用运行时的
   自动更新行为。
@@ -165,7 +164,7 @@
   服务商。
 - [x] 删除不再使用的 OAuth/Keychain token 读取、刷新、重认证和 credential-watch 代码及测试。
 - [x] 删除旧 API 用量历史、旧用量缓存及其 UserDefaults key；不做数据迁移。首次启动新版后，
-  仅显示新 CLI `/usage` / `/status` 和新本地日志扫描得到的数据。
+  仅显示新 CLI `/status` 和新本地日志扫描得到的数据。
 - [x] 更新 README、隐私说明、故障排查与设置文案，说明代理是状态读取的必填项。
 - [x] 为 CLI 输出解析准备脱敏 PTY transcript fixture，覆盖正常、多个窗口、单窗口、API
   模式、未登录、代理失败、提示符未出现、ANSI 控制序列、加载动画、超时、`SIGINT` 清理、版本
@@ -178,6 +177,6 @@
 
 ## 实施前必须确认
 
-- [x] 收集并锁定当前验证的 Claude Code/Codex `/usage` / `/status` PTY transcript；验证
+- [x] 收集并锁定当前验证的 Claude Code/Codex `/status` PTY transcript；验证
   这些命令不会触发模型 turn 或 token 消耗，并为未支持版本提供明确的降级提示。
 - [x] 多 Codex 配置项在灵动岛显示第一个可用手工配置项；展开页按配置分别展示。

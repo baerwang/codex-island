@@ -9,9 +9,14 @@ Open an issue. Useful things to include:
 - macOS version (`sw_vers`) — particularly if the notch detection or window placement is off.
 - Output of `defaults read dev.codexisland.CodexIsland` if it's a settings-related bug.
 - A short description of what you expected vs. what happened.
-- Whether Claude / Codex actually has data populated in the panel — `auth required` errors usually mean the upstream creds aren't where we expect them.
+- Whether Claude / Codex actually has data populated in the panel — include the
+  visible CLI error and the selected proxy/profile configuration, never any
+  credentials.
 
-If `/api/oauth/usage` or `/wham/usage` starts returning unexpected fields, both endpoints are undocumented and may have changed; please grab a `curl` of the response (with the token redacted) so we can update the parser.
+If Claude or Codex changes its interactive status screen, attach a redacted
+PTY transcript from `claude /status` or `codex /status`. Do not capture or
+share OAuth tokens, API keys, `auth.json`, Keychain data, or provider HTTP
+responses: the app deliberately never reads or calls those sources.
 
 ## Building locally
 
