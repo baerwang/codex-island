@@ -6,15 +6,15 @@ import Foundation
 enum UsageFetcher {
     static func fetchClaude() async -> AppUsage {
         let configuration = await MainActor.run {
-            (CLIProviderConfigStore.shared.claudeProxyURL, CLIProviderConfigStore.shared.claudeWorkdir)
+            CLIProviderConfigStore.shared.claudeProxyURL
         }
-        guard isProxy(configuration.0) else { return errorPair("proxy required") }
-        guard isDirectory(configuration.1) else { return errorPair("claude workdir required") }
+        guard isProxy(configuration) else { return errorPair("proxy required") }
+        guard isDirectory(CLIProviderConfigStore.statusWorkdir) else { return errorPair("claude workdir required") }
         guard let executable = executable(named: "claude") else { return errorPair("claude not found") }
 
         let transcript = await CLIStatusProbe.run(.init(
-            provider: .claude, executable: executable, proxyURL: configuration.0,
-            workdir: configuration.1, codexHome: nil, codexFullAccess: false
+            provider: .claude, executable: executable, proxyURL: configuration,
+            workdir: CLIProviderConfigStore.statusWorkdir, codexHome: nil, codexFullAccess: false
         ))
         return CLIUsageParser.parseClaude(transcript.text, timedOut: transcript.timedOut)
     }

@@ -114,7 +114,11 @@ final class AlertEngine: ObservableObject {
             AlertDecision.WindowInput(
                 provider: .claude,
                 visible: visibility.claudeVisible,
-                window: usage.claude.fiveHour
+                // Keep alerting aligned with the window the compact island
+                // actually surfaces. Claude normally prefers 5h, but a
+                // status variant that omits it should still be able to warn
+                // on its reported weekly window instead of going silent.
+                window: usage.claude.peekWindow
             ),
             AlertDecision.WindowInput(
                 provider: .codex,
@@ -324,4 +328,3 @@ enum AlertDecision {
         return CrossingsEvalResult(next: next, pulse: pulse)
     }
 }
-

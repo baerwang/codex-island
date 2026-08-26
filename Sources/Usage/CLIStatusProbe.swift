@@ -59,6 +59,7 @@ enum CLIStatusProbe {
         var raw = Data()
         var timedOut = false
         var childExited = false
+        var captureUntil: Date?
         var cursorQueryTail = Data()
         var acceptedStatusWorkspaceTrust = false
         let maximumAttempts = request.provider == .codex ? 3 : 1
@@ -108,10 +109,25 @@ enum CLIStatusProbe {
                 }
                 commandsSent += 1
                 nextCommandAt = now.addingTimeInterval(3)
+                if commandsSent == maximumAttempts {
+                    captureUntil = now.addingTimeInterval(postStatusCaptureInterval(for: request.provider))
+                }
             }
 
             var status: Int32 = 0
             childExited = waitpid(pid, &status, WNOHANG) == pid
+            // The status screens are persistent TUIs, so waiting for their
+            // process to exit always reaches the hard timeout. After the last
+            // planned command, retain a bounded quiet capture window, then
+            // interrupt the idle session. The hard timeout still protects a
+            // slow or wedged CLI that keeps drawing.
+            if !childExited,
+               let captureUntil,
+               now >= captureUntil,
+               now.timeIntervalSince(lastOutputAt) >= 1 {
+                terminateAndReap(pid)
+                break
+            }
             if now.timeIntervalSince(started) >= timeout {
                 timedOut = true
                 terminateAndReap(pid)
@@ -156,6 +172,15 @@ enum CLIStatusProbe {
             }
         }
         return names.map { EnvironmentChange(name: $0, value: proxy) }
+    }
+
+    /// Claude needs one settled Status frame; Codex sends three delayed
+    /// Status commands to absorb its occasionally late first response.
+    static func postStatusCaptureInterval(for provider: Provider) -> TimeInterval {
+        switch provider {
+        case .claude: return 10
+        case .codex: return 8
+        }
     }
 
     /// Reap the direct PTY child after escalating its process group. Without

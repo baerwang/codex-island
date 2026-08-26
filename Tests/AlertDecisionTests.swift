@@ -69,6 +69,15 @@ struct AlertDecisionTests {
         )
         expect(profileA != profileB, "Codex history stays isolated by profile")
 
+        let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
+        let retainedSamples = UsageHistoryStore.samplesWithinRetention([
+            UsageSample(at: historyNow.addingTimeInterval(-8 * 86400), used: 0.1),
+            UsageSample(at: historyNow.addingTimeInterval(-6 * 86400), used: 0.2),
+            UsageSample(at: historyNow.addingTimeInterval(60), used: 0.3),
+        ], now: historyNow)
+        expect(retainedSamples.count == 1, "usage history hides expired and future samples on read")
+        expect(retainedSamples.first?.used == 0.2, "usage history keeps the current-window sample")
+
         print(failures == 0 ? "ALL PASS" : "\(failures) FAILURE(S)")
         exit(failures == 0 ? 0 : 1)
     }

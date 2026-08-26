@@ -53,7 +53,7 @@ final class UsageStore: ObservableObject {
         activeRefreshID = refreshID
         refreshTask = Task {
             let profiles = CLIProviderConfigStore.shared.activeCodexProfiles
-            let codexWorkdir = CLIProviderConfigStore.shared.codexWorkdir
+            let codexWorkdir = CLIProviderConfigStore.statusWorkdir
             if let preferredCodexProfileID,
                !profiles.contains(where: { $0.id == preferredCodexProfileID }) {
                 self.preferredCodexProfileID = nil

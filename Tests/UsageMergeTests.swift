@@ -47,6 +47,9 @@ struct UsageMergeTests {
             WindowUsage(usedPercent: 0.42, resetAt: nil, error: "rate limited").hasReading,
             "carried-forward value with an attached error is still a reading"
         )
+        let weeklyFallback = pair(.unknown, reading(0.42, resetIn: 5 * 86400))
+        expect(weeklyFallback.peekWindowIsWeekly, "weekly is the compact fallback when 5h is absent")
+        expect(weeklyFallback.peekWindow.percentInt == 42, "compact fallback keeps the reported weekly value")
 
         // MARK: the defect itself — why the gate has to exist
 

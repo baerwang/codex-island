@@ -196,8 +196,16 @@ struct CLIUsageParserTests {
             configuredCodexEnvironment.allSatisfy { $0.value == "http://127.0.0.1:7890" },
             "configured Codex proxy sets every proxy spelling"
         )
+        expect(
+            CLIStatusProbe.postStatusCaptureInterval(for: .claude) == 10,
+            "Claude captures one settled status frame before interruption"
+        )
+        expect(
+            CLIStatusProbe.postStatusCaptureInterval(for: .codex) == 8,
+            "Codex captures after its three planned status attempts"
+        )
 
-        // Claude writes its Usage tab by moving the cursor around an
+        // Claude writes its Status tab by moving the cursor around an
         // alternate screen. Removing ANSI codes alone joins cells such as
         // `Resets1:40pm`; the probe must recover the displayed screen before
         // passing it to the text parser.
@@ -212,7 +220,7 @@ struct CLIUsageParserTests {
         expect(parsedClaudeTUI.windows.count == 3, "cursor-positioned Claude keeps all windows")
 
         // A real Claude redraw can temporarily leave its progress bar over a
-        // label and use box drawing for its section rule. The completed Usage
+        // label and use box drawing for its section rule. The completed Status
         // screen still has three ordered percent/reset pairs; this is the
         // shape the fallback above is designed to accept offline.
         let redrawnClaude = CLIUsageParser.parseClaude("""

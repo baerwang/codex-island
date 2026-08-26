@@ -58,9 +58,13 @@ final class UsageHistoryStore: ObservableObject {
     /// Readings for one series, oldest first. The latest entry is the most
     /// recent successful poll.
     func samples(
-        provider: AlertEngine.Provider, window: UsageWindow, sourceID: String? = nil
+        provider: AlertEngine.Provider, window: UsageWindow, sourceID: String? = nil,
+        now: Date = Date()
     ) -> [UsageSample] {
-        series[Self.seriesKey(provider: provider, window: window, sourceID: sourceID)] ?? []
+        Self.samplesWithinRetention(
+            series[Self.seriesKey(provider: provider, window: window, sourceID: sourceID)] ?? [],
+            now: now
+        )
     }
 
     /// Newest recorded reading for a series, or nil when there is none or the
@@ -73,9 +77,22 @@ final class UsageHistoryStore: ObservableObject {
         provider: AlertEngine.Provider, window: UsageWindow, sourceID: String? = nil,
         now: Date = Date()
     ) -> UsageSample? {
-        guard let newest = series[Self.seriesKey(provider: provider, window: window, sourceID: sourceID)]?.last else { return nil }
+        guard let newest = Self.samplesWithinRetention(
+            series[Self.seriesKey(provider: provider, window: window, sourceID: sourceID)] ?? [],
+            now: now
+        ).last else { return nil }
         guard now.timeIntervalSince(newest.at) <= window.span else { return nil }
         return newest
+    }
+
+    /// Read-time retention is as important as write-time pruning: a launch
+    /// whose first CLI probe fails must not render a months-old sparkline from
+    /// UserDefaults. Future-dated samples are excluded for the same reason.
+    nonisolated static func samplesWithinRetention(
+        _ samples: [UsageSample], now: Date, maxAge: TimeInterval = 7 * 86400
+    ) -> [UsageSample] {
+        let cutoff = now.addingTimeInterval(-maxAge)
+        return samples.filter { $0.at >= cutoff && $0.at <= now }
     }
 
     private func append(

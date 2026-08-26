@@ -61,23 +61,19 @@ struct CodexCLIProfile: Codable, Identifiable, Equatable, Sendable {
 @MainActor
 final class CLIProviderConfigStore: ObservableObject {
     static let shared = CLIProviderConfigStore()
+    /// Status probes always run outside a user project. This is intentionally
+    /// not configurable or persisted: a stale preference must never make a
+    /// background CLI status session load project hooks/configuration.
+    nonisolated static let statusWorkdir = "/private/tmp"
 
     private static let claudeProxyKey = "CodexIsland.cli.claudeProxy"
-    private static let claudeWorkdirKey = "CodexIsland.cli.claudeWorkdir"
     private static let codexProfilesKey = "CodexIsland.cli.codexProfiles.v1"
-    private static let codexWorkdirKey = "CodexIsland.cli.codexWorkdir"
 
     @Published var claudeProxyURL: String { didSet { saveClaude() } }
-    /// `/private/tmp` is user-selected as the stable, non-project status
-    /// workspace. We never create, delete or write within it.
-    @Published var claudeWorkdir: String { didSet { UserDefaults.standard.set(claudeWorkdir, forKey: Self.claudeWorkdirKey) } }
-    @Published var codexWorkdir: String { didSet { UserDefaults.standard.set(codexWorkdir, forKey: Self.codexWorkdirKey) } }
     @Published var codexProfiles: [CodexCLIProfile] { didSet { saveCodexProfiles() } }
 
     private init() {
         claudeProxyURL = UserDefaults.standard.string(forKey: Self.claudeProxyKey) ?? ""
-        claudeWorkdir = UserDefaults.standard.string(forKey: Self.claudeWorkdirKey) ?? "/private/tmp"
-        codexWorkdir = UserDefaults.standard.string(forKey: Self.codexWorkdirKey) ?? "/private/tmp"
         if let data = UserDefaults.standard.data(forKey: Self.codexProfilesKey),
            let decoded = try? JSONDecoder().decode([CodexCLIProfile].self, from: data) {
             codexProfiles = decoded

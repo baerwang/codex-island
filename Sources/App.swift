@@ -25,6 +25,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.removeObject(forKey: "CodexIsland.usageHistory.v1")
         UserDefaults.standard.removeObject(forKey: "CodexIsland.usageHistory.v2")
         UserDefaults.standard.removeObject(forKey: "MacIsland.costCache.v7")
+        // Status probes are permanently pinned to /private/tmp and plan tags
+        // come only from CLI output. Drop transient preferences from the
+        // earlier configurable-workdir/manual-plan experiments.
+        UserDefaults.standard.removeObject(forKey: "CodexIsland.cli.claudeWorkdir")
+        UserDefaults.standard.removeObject(forKey: "CodexIsland.cli.codexWorkdir")
+        UserDefaults.standard.removeObject(forKey: "CodexIsland.cli.claudePlanPresentation")
         // Before any window or store exists: the first cost scan must price
         // against the cached catalog, not fall back to the seed and then
         // silently change its numbers a moment later.
