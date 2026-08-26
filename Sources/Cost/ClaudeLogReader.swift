@@ -127,6 +127,9 @@ enum ClaudeLogReader {
         let cacheCreate = (usage["cache_creation_input_tokens"] as? Int) ?? 0
         let cacheRead = (usage["cache_read_input_tokens"] as? Int) ?? 0
         let projectID = (raw["cwd"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let projectName = projectID.flatMap { path in
+            path.isEmpty ? nil : URL(fileURLWithPath: path).lastPathComponent
+        }
 
         // Skip noop entries — ccusage filters these so totals match exactly.
         if input == 0 && output == 0 && cacheCreate == 0 && cacheRead == 0 { return nil }
@@ -139,7 +142,7 @@ enum ClaudeLogReader {
             cacheCreationTokens: cacheCreate,
             cacheReadTokens: cacheRead,
             projectID: projectID?.isEmpty == false ? projectID : nil,
-            projectName: projectID?.isEmpty == false ? URL(fileURLWithPath: projectID!).lastPathComponent : nil,
+            projectName: projectName,
             dedupKey: dedupKey
         )
     }

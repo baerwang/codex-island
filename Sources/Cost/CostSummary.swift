@@ -87,7 +87,8 @@ enum CostSummary {
             let canonicalProject = canonicalProjectID(event.projectID)
             let projectID = "\(event.sourceID ?? "local")::\(canonicalProject ?? "unattributed")"
             let projectName = canonicalProject.map { URL(fileURLWithPath: $0).lastPathComponent }
-                ?? (event.projectName?.isEmpty == false ? event.projectName! : "Unattributed")
+                ?? event.projectName.flatMap { $0.isEmpty ? nil : $0 }
+                ?? "Unattributed"
             let sourceID = event.sourceID
             let sourceName = event.sourceName
 

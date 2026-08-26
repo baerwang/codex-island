@@ -72,12 +72,26 @@ final class CLIProviderConfigStore: ObservableObject {
 
     func addCodexProfile() {
         codexProfiles.append(CodexCLIProfile(
-            name: "Codex \(codexProfiles.count + 1)", codexHome: ""
+            name: uniqueCodexProfileName("Codex \(codexProfiles.count + 1)"), codexHome: ""
         ))
     }
 
     func removeCodexProfile(id: UUID) {
         codexProfiles.removeAll { $0.id == id }
+    }
+
+    /// Profile names appear beside quota windows and project cost rows, so
+    /// make them stable human identifiers rather than ambiguous duplicates.
+    func uniqueCodexProfileName(_ proposed: String, excluding id: UUID? = nil) -> String {
+        let base = proposed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stem = base.isEmpty ? "Codex" : base
+        let used = Set(codexProfiles
+            .filter { $0.id != id }
+            .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+        guard used.contains(stem.lowercased()) else { return stem }
+        var number = 2
+        while used.contains("\(stem) \(number)".lowercased()) { number += 1 }
+        return "\(stem) \(number)"
     }
 
     private func saveClaude() {

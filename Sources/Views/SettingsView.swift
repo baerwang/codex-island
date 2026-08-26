@@ -41,6 +41,13 @@ struct SettingsView: View {
         .joined(separator: "\u{1E}")
     }
 
+    /// Renaming a profile is display-only for quota probing, but project-cost
+    /// rows carry that human label and should update without another CLI run.
+    private var codexProfileNameFingerprint: String {
+        cliConfig.codexProfiles.map { "\($0.id.uuidString)|\($0.name)" }
+            .joined(separator: "\u{1E}")
+    }
+
     private var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
     }
@@ -81,6 +88,7 @@ struct SettingsView: View {
         .preferredColorScheme(.dark)
         .onChange(of: cliConfig.claudeProxyURL) { _ in queueCLIStatusRefresh() }
         .onChange(of: codexStatusFingerprint) { _ in queueCLIStatusRefresh() }
+        .onChange(of: codexProfileNameFingerprint) { _ in cost.refreshCodexForConfiguredProfiles() }
         .onDisappear { cliRefreshTask?.cancel() }
     }
 
@@ -575,7 +583,7 @@ struct SettingsView: View {
         let reading = usage.codexByProfile[profile.wrappedValue.id]
         return VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
-                TextField("Profile name", text: profile.name)
+                TextField("Profile name", text: uniqueProfileNameBinding(profile))
                     .textFieldStyle(.roundedBorder)
                 SettingsToggle(isOn: profile.enabled.wrappedValue) {
                     profile.enabled.wrappedValue.toggle()
@@ -634,6 +642,17 @@ struct SettingsView: View {
         let five = reading.fiveHour.displayedPercentInt(mode: usageDisplay.mode)
         let week = reading.weekly.displayedPercentInt(mode: usageDisplay.mode)
         return "5h \(five)% · week \(week)%"
+    }
+
+    private func uniqueProfileNameBinding(_ profile: Binding<CodexCLIProfile>) -> Binding<String> {
+        Binding(
+            get: { profile.wrappedValue.name },
+            set: { proposed in
+                profile.wrappedValue.name = cliConfig.uniqueCodexProfileName(
+                    proposed, excluding: profile.wrappedValue.id
+                )
+            }
+        )
     }
 
     /// Lets the user pick which token total drives the TOKENS hero on the
