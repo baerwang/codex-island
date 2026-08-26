@@ -24,7 +24,7 @@ struct CostSparkline: View {
                     .fill(color)
                     .frame(width: 3, height: 3)
                     .position(x: 1.5, y: geo.size.height - 1.5)
-                    .shadow(color: color.opacity(0.6), radius: 3)
+                    .shadow(color: color.opacity(0.35), radius: 1.25)
             } else {
                 let stepX = geo.size.width / CGFloat(n - 1)
 
@@ -43,12 +43,12 @@ struct CostSparkline: View {
                         p.closeSubpath()
                     }
                     .fill(LinearGradient(
-                        colors: [color.opacity(0.45), color.opacity(0.0)],
+                        colors: [color.opacity(0.25), color.opacity(0.0)],
                         startPoint: .top, endPoint: .bottom
                     ))
 
-                    // Stroke line on top, with a soft glow so the line
-                    // glows against the dark panel.
+                    // A restrained halo keeps the curve readable at a glance
+                    // without softening the entire cost page into a glow.
                     Path { p in
                         let firstY = geo.size.height * (1 - CGFloat(series[0] / scale))
                         p.move(to: CGPoint(x: 0, y: firstY))
@@ -59,7 +59,7 @@ struct CostSparkline: View {
                         }
                     }
                     .stroke(color, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-                    .shadow(color: color.opacity(0.7), radius: 3)
+                    .shadow(color: color.opacity(0.38), radius: 1.25)
                 }
             }
         }

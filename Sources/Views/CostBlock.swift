@@ -59,11 +59,11 @@ struct CostTile: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(L10n.tr(window.label))
                     .font(Typography.label)
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(.white.opacity(0.65))
                 Spacer()
                 Text(resetGlyph)
                     .font(Typography.caption)
-                    .foregroundStyle(.white.opacity(window.unknownModels.isEmpty ? 0.4 : 0.5))
+                    .foregroundStyle(.white.opacity(window.unknownModels.isEmpty ? 0.50 : 0.60))
                     .help(resetGlyphSpoken)
                     .accessibilityLabel(resetGlyphSpoken)
             }
@@ -235,7 +235,7 @@ struct CostTile: View {
                 Text(formattedDollarsCompact)
                     .font(Typography.bodyNumber)
                     .foregroundStyle(color)
-                    .shadow(color: color.opacity(0.7), radius: 3)
+                    .shadow(color: color.opacity(0.35), radius: 1.25)
             }
         }
     }
