@@ -216,11 +216,37 @@ enum CLIUsageParser {
         return String(text[result]).lowercased()
     }
 
-    /// Both CLIs may only name a broad plan (`Pro`, `Max`) or may include the
-    /// visible multiplier. Preserve precisely what their status transcript
-    /// says; no tier is inferred from a quota percentage or local costs.
+    /// Claude's `/status` owns the actual login method. Subscription account
+    /// labels are distinct from Console/API and managed-platform logins, so
+    /// never infer a subscription tier from quota percentages or local costs.
     private static func claudePlan(in text: String) -> String? {
         let plan = #"Max(?:\s*(?:(?:x|×)\s*(?:5|20)|(?:5|20)\s*(?:x|×)))?|Pro|Team|Enterprise"#
+        if let loginMethod = capture(
+            in: text, pattern: #"(?im)Login\s+method\s*:\s*([^\r\n]+)"#
+        ) {
+            if let detailedSubscription = planCapture(in: loginMethod, patterns: [
+                #"(?i)\(("# + plan + #")\)"#,
+            ]) {
+                return detailedSubscription
+            }
+            if let subscription = planCapture(in: loginMethod, patterns: [
+                #"(?i)Claude\s+("# + plan + #")\b"#,
+            ]) {
+                return subscription
+            }
+            if loginMethod.range(
+                of: #"(?i)(Anthropic\s+Console|API(?:\s+(?:key|account))?)"#,
+                options: .regularExpression
+            ) != nil {
+                return "api"
+            }
+            if loginMethod.range(
+                of: #"(?i)(Amazon\s+Bedrock|Microsoft\s+Foundry|Vertex\s+AI|third[- ]party)"#,
+                options: .regularExpression
+            ) != nil {
+                return "third-party"
+            }
+        }
         return planCapture(in: text, patterns: [
             #"(?i)Account\s*:\s*[^\r\n]*?\(("# + plan + #")\)"#,
             #"(?i)(?:Plan|Subscription)\s*:\s*(?:Claude\s+)?("# + plan + #")\b"#,

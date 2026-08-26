@@ -38,6 +38,54 @@ struct CLIUsageParserTests {
         """, timedOut: false)
         expect(claudeStatusPlan.plan == "max ×20", "Claude status preserves stated Max multiplier")
 
+        let claudeLoginMethod = CLIUsageParser.parseClaude("""
+        Login method:     Claude Max account
+        Current session
+        ████ 8% used
+        Resets 1:40pm (Asia/Shanghai)
+        Current week (all models)
+        █████████████████▌ 35% used
+        Resets Aug 31 at 12pm (Asia/Shanghai)
+        """, timedOut: false)
+        expect(claudeLoginMethod.plan == "max", "Claude Login method is the plan source")
+        expect(claudeLoginMethod.fiveHour.percentInt == 8, "Claude Status tab keeps session quota")
+        expect(claudeLoginMethod.weekly.percentInt == 35, "Claude Status tab keeps weekly quota")
+
+        let claudeDetailedLogin = CLIUsageParser.parseClaude("""
+        Login method: Claude Max account (Max 20x)
+        Current session 8% used Resets 1:40pm
+        Current week (all models) 35% used Resets Aug 31 at 12pm
+        """, timedOut: false)
+        expect(claudeDetailedLogin.plan == "max ×20", "Claude Login method keeps stated Max multiplier")
+
+        for (loginMethod, expectedPlan) in [
+            ("Claude Pro account", "pro"),
+            ("Claude Team account", "team"),
+            ("Claude Enterprise account", "enterprise"),
+            ("API key", "api"),
+        ] {
+            let usage = CLIUsageParser.parseClaude("""
+            Login method: \(loginMethod)
+            Current session 8% used Resets 1:40pm
+            Current week (all models) 35% used Resets Aug 31 at 12pm
+            """, timedOut: false)
+            expect(usage.plan == expectedPlan, "Claude login method \(loginMethod) is identified")
+        }
+
+        let claudeConsole = CLIUsageParser.parseClaude("""
+        Login method: Anthropic Console account
+        Current session 8% used Resets 1:40pm
+        Current week (all models) 35% used Resets Aug 31 at 12pm
+        """, timedOut: false)
+        expect(claudeConsole.plan == "api", "Claude Console login is not mislabeled as subscription")
+
+        let claudeBedrock = CLIUsageParser.parseClaude("""
+        Login method: 3rd-party platform · Amazon Bedrock
+        Current session 8% used Resets 1:40pm
+        Current week (all models) 35% used Resets Aug 31 at 12pm
+        """, timedOut: false)
+        expect(claudeBedrock.plan == "third-party", "Claude managed-platform login is identified")
+
         let codex = CLIUsageParser.parseCodex("""
         Account: user@example.com (Pro)
         Weekly limit: [███████████████████░] 94% left

@@ -49,10 +49,10 @@ enum CLIStatusProbe {
         _ = fcntl(master, F_SETFL, O_NONBLOCK)
         let started = Date()
         var commandsSent = 0
-        // Codex must finish drawing before its prompt marker can be trusted;
-        // Claude accepts a queued `/usage` command as soon as its PTY starts.
-        // Do not visit Claude's `/status` first: it opens Settings and can
-        // consume a subsequent slash command rather than returning Usage.
+        // Codex must finish drawing before its prompt marker can be trusted.
+        // Claude's Status tab itself contains the login method and current
+        // subscription windows. Keep it to one `/status` command instead of
+        // navigating from Status to Usage, which varies across CLI releases.
         var nextCommandAt = started.addingTimeInterval(request.provider == .codex ? 8 : 3)
         var lastOutputAt = started
         var sawPrompt = false
@@ -99,7 +99,7 @@ enum CLIStatusProbe {
                now >= nextCommandAt,
                now.timeIntervalSince(lastOutputAt) >= 0.25 {
                 switch request.provider {
-                case .claude: write(master, Data("/usage\r".utf8))
+                case .claude: write(master, Data("/status\r".utf8))
                 // Codex's composer accepts the slash command on the first
                 // return and renders the status view on the confirmation
                 // return. A single return has repeatedly left this TUI on the
