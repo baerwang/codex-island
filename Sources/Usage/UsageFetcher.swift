@@ -223,7 +223,13 @@ enum CLIUsageParser {
             .replacingOccurrences(of: #"\s*\([A-Za-z_]+/[A-Za-z_]+\)"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let now = Date()
-        if let relative = relativeSeconds(trimmed) { return now.addingTimeInterval(relative) }
+        if let relative = relativeSeconds(trimmed) {
+            // Relative CLI captions are refreshed every poll. Normalize the
+            // result to the minute so the alert engine sees one reset window
+            // instead of a new boundary caused only by changing seconds.
+            let date = now.addingTimeInterval(relative)
+            return Date(timeIntervalSinceReferenceDate: floor(date.timeIntervalSinceReferenceDate / 60) * 60)
+        }
 
         let candidates: [(String, String)] = [
             ("h:mma", trimmed.replacingOccurrences(of: " ", with: "")),
@@ -260,9 +266,10 @@ enum CLIUsageParser {
     }
 
     private static func relativeSeconds(_ text: String) -> TimeInterval? {
+        let days = Int(capture(in: text, pattern: #"(?i)(\d+)d"#) ?? "0") ?? 0
         let hours = Int(capture(in: text, pattern: #"(?i)(\d+)h"#) ?? "0") ?? 0
         let minutes = Int(capture(in: text, pattern: #"(?i)(\d+)m"#) ?? "0") ?? 0
-        let total = hours * 3600 + minutes * 60
+        let total = days * 86400 + hours * 3600 + minutes * 60
         return total > 0 ? TimeInterval(total) : nil
     }
 }

@@ -55,6 +55,20 @@ struct CLIUsageParserTests {
         expect(redrawnCodex.windows.count == 3, "Codex TUI redraws do not duplicate windows")
         expect(redrawnCodex.weekly.percentInt == 6, "Codex account weekly survives redraw")
 
+        let relativeCodex = CLIUsageParser.parseCodex("""
+        Weekly limit: 91% left (resets in 6d 2h)
+        5h limit: 100% left (resets in 4h)
+        Weekly limit: 29% left (resets in 2d 3h)
+        """, timedOut: false)
+        let relativeSecond = relativeCodex.fiveHour.resetAt.map {
+            Calendar.current.component(.second, from: $0)
+        }
+        expect(relativeSecond == 0, "relative Codex reset normalizes to the minute")
+        expect(
+            (relativeCodex.weekly.resetAt?.timeIntervalSinceNow ?? 0) > 5 * 86400,
+            "relative Codex reset keeps day component"
+        )
+
         let codexAPI = CLIUsageParser.parseCodex("""
         Authentication: API key
         API-key authentication does not include subscription limits.
