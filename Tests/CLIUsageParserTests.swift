@@ -204,6 +204,22 @@ struct CLIUsageParserTests {
             CLIStatusProbe.postStatusCaptureInterval(for: .codex) == 8,
             "Codex captures after its three planned status attempts"
         )
+        expect(
+            CLIStatusProbe.codexStatusLooksComplete("5h limit: 90% left\nWeekly limit: 50% left"),
+            "Codex subscription status stops retrying once complete"
+        )
+        expect(
+            CLIStatusProbe.codexStatusLooksComplete("Model provider: custom\nLimits: data not available yet"),
+            "Codex custom-provider status stops retrying once identified"
+        )
+        expect(
+            CLIStatusProbe.codexStatusLooksComplete("Not logged in · Please run /login"),
+            "Codex signed-out status stops retrying once identified"
+        )
+        expect(
+            !CLIStatusProbe.codexStatusLooksComplete("Loading status…"),
+            "incomplete Codex status keeps retry budget available"
+        )
 
         // Claude writes its Status tab by moving the cursor around an
         // alternate screen. Removing ANSI codes alone joins cells such as

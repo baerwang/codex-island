@@ -91,11 +91,21 @@ enum CLIStatusProbe {
                         write(master, Data("\r".utf8))
                         acceptedStatusWorkspaceTrust = true
                     }
+                    // Stop retrying as soon as one `/status` response has a
+                    // complete terminal state. The remaining attempts are a
+                    // bounded retry budget for delayed/incomplete TUI output,
+                    // not commands we must always send.
+                    if commandsSent > 0,
+                       captureUntil == nil,
+                       codexStatusLooksComplete(terminalText(raw)) {
+                        captureUntil = now.addingTimeInterval(2)
+                    }
                 }
             }
 
             let ready = request.provider == .claude || sawPrompt
-            if commandsSent < maximumAttempts,
+            if captureUntil == nil,
+               commandsSent < maximumAttempts,
                ready,
                now >= nextCommandAt,
                now.timeIntervalSince(lastOutputAt) >= 0.25 {
@@ -181,6 +191,21 @@ enum CLIStatusProbe {
         case .claude: return 10
         case .codex: return 8
         }
+    }
+
+    /// A successful Codex status can represent subscription quotas, a
+    /// recognized API/custom provider, or an actionable signed-out state.
+    /// In all three cases another `/status` cannot improve the result.
+    static func codexStatusLooksComplete(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        let subscription = lower.contains("5h limit") && lower.contains("weekly limit")
+        let apiOrCustom = lower.contains("api-key")
+            || lower.contains("api key")
+            || lower.contains("limits: data not available")
+            || lower.contains("model provider:")
+        let signedOut = lower.contains("not logged in")
+            || lower.contains("please run /login")
+        return subscription || apiOrCustom || signedOut
     }
 
     /// Reap the direct PTY child after escalating its process group. Without
