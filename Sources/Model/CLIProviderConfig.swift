@@ -1,50 +1,6 @@
 import Combine
 import Foundation
 
-enum PlanPresentation: String, CaseIterable, Codable, Sendable {
-    case auto
-    case claudePro
-    case claudeMax5
-    case claudeMax20
-    case codexPlus
-    case codexPro5
-    case codexPro20
-
-    static let claudeChoices: [PlanPresentation] = [.auto, .claudePro, .claudeMax5, .claudeMax20]
-    static let codexChoices: [PlanPresentation] = [.auto, .codexPlus, .codexPro5, .codexPro20]
-
-    var label: String {
-        switch self {
-        case .auto: return "Auto"
-        case .claudePro: return "Pro"
-        case .claudeMax5: return "Max ×5"
-        case .claudeMax20: return "Max ×20"
-        case .codexPlus: return "Plus"
-        case .codexPro5: return "Pro ×5"
-        case .codexPro20: return "Pro ×20"
-        }
-    }
-
-    /// The plan-price reference used by the local-cost "Value" chart.
-    /// A manual label must carry the same reference as its visible tier;
-    /// otherwise selecting, for example, Max ×5 but comparing it against
-    /// Max ×20 would make the chart misleading. `auto` deliberately has no
-    /// value and continues to use the tier parsed from the CLI.
-    var monthlyReferenceUSD: Double? {
-        switch self {
-        case .auto: return nil
-        case .claudePro, .codexPlus: return 20
-        case .claudeMax5, .codexPro5: return 100
-        case .claudeMax20, .codexPro20: return 200
-        }
-    }
-
-    func displayLabel(fallback: String?) -> String? {
-        guard self == .auto else { return label }
-        return fallback?.uppercased()
-    }
-}
-
 enum CodexQuotaMode: String, CaseIterable, Codable, Sendable {
     case auto
     case subscription
@@ -71,14 +27,10 @@ struct CodexCLIProfile: Codable, Identifiable, Equatable, Sendable {
     /// Optional to keep previously saved profile JSON decodable. nil means
     /// automatic detection from the CLI status screen.
     var quotaMode: CodexQuotaMode?
-    /// Optional so existing profile JSON stays decodable. nil means use the
-    /// generic plan name parsed from CLI status without inventing a multiplier.
-    var planPresentation: PlanPresentation?
 
     init(
         id: UUID = UUID(), name: String, codexHome: String,
-        proxyURL: String = "", enabled: Bool = true, quotaMode: CodexQuotaMode? = nil,
-        planPresentation: PlanPresentation? = nil
+        proxyURL: String = "", enabled: Bool = true, quotaMode: CodexQuotaMode? = nil
     ) {
         self.id = id
         self.name = name
@@ -86,7 +38,6 @@ struct CodexCLIProfile: Codable, Identifiable, Equatable, Sendable {
         self.proxyURL = proxyURL
         self.enabled = enabled
         self.quotaMode = quotaMode
-        self.planPresentation = planPresentation
     }
 
     var expandedHome: String {
@@ -105,7 +56,6 @@ struct CodexCLIProfile: Codable, Identifiable, Equatable, Sendable {
     }
 
     var effectiveQuotaMode: CodexQuotaMode { quotaMode ?? .auto }
-    var effectivePlanPresentation: PlanPresentation { planPresentation ?? .auto }
 }
 
 @MainActor
@@ -113,15 +63,11 @@ final class CLIProviderConfigStore: ObservableObject {
     static let shared = CLIProviderConfigStore()
 
     private static let claudeProxyKey = "CodexIsland.cli.claudeProxy"
-    private static let claudePlanPresentationKey = "CodexIsland.cli.claudePlanPresentation"
     private static let claudeWorkdirKey = "CodexIsland.cli.claudeWorkdir"
     private static let codexProfilesKey = "CodexIsland.cli.codexProfiles.v1"
     private static let codexWorkdirKey = "CodexIsland.cli.codexWorkdir"
 
     @Published var claudeProxyURL: String { didSet { saveClaude() } }
-    @Published var claudePlanPresentation: PlanPresentation {
-        didSet { UserDefaults.standard.set(claudePlanPresentation.rawValue, forKey: Self.claudePlanPresentationKey) }
-    }
     /// `/private/tmp` is user-selected as the stable, non-project status
     /// workspace. We never create, delete or write within it.
     @Published var claudeWorkdir: String { didSet { UserDefaults.standard.set(claudeWorkdir, forKey: Self.claudeWorkdirKey) } }
@@ -130,9 +76,6 @@ final class CLIProviderConfigStore: ObservableObject {
 
     private init() {
         claudeProxyURL = UserDefaults.standard.string(forKey: Self.claudeProxyKey) ?? ""
-        claudePlanPresentation = PlanPresentation(
-            rawValue: UserDefaults.standard.string(forKey: Self.claudePlanPresentationKey) ?? ""
-        ) ?? .auto
         claudeWorkdir = UserDefaults.standard.string(forKey: Self.claudeWorkdirKey) ?? "/private/tmp"
         codexWorkdir = UserDefaults.standard.string(forKey: Self.codexWorkdirKey) ?? "/private/tmp"
         if let data = UserDefaults.standard.data(forKey: Self.codexProfilesKey),

@@ -16,7 +16,15 @@ enum UsageFetcher {
             provider: .claude, executable: executable, proxyURL: configuration.0,
             workdir: configuration.1, codexHome: nil, codexFullAccess: false
         ))
-        return CLIUsageParser.parseClaude(transcript.text, timedOut: transcript.timedOut)
+        // `terminalText` is the final Usage screen and accurately preserves
+        // its grid. `sequentialText` retains the preceding Status screen,
+        // where Claude writes the active account/plan. Keep the two inputs
+        // separate: raw redraw history must never influence quota parsing.
+        return CLIUsageParser.parseClaude(
+            transcript.text,
+            timedOut: transcript.timedOut,
+            metadataText: CLIStatusProbe.sequentialText(transcript.raw)
+        )
     }
 
     static func fetchCodex(profile: CodexCLIProfile, workdir: String) async -> AppUsage {
@@ -73,7 +81,9 @@ enum UsageFetcher {
 }
 
 enum CLIUsageParser {
-    static func parseClaude(_ text: String, timedOut: Bool) -> AppUsage {
+    static func parseClaude(
+        _ text: String, timedOut: Bool, metadataText: String? = nil
+    ) -> AppUsage {
         // The rendered TUI uses box/block glyphs for separators and progress
         // bars. Normalize them to whitespace before matching its labels.
         let screen = text.replacingOccurrences(
@@ -114,7 +124,7 @@ enum CLIUsageParser {
         return AppUsage(
             fiveHour: window(used: session.percent, reset: session.reset),
             weekly: window(used: weekly.percent, reset: weekly.reset),
-            plan: capture(in: text, pattern: #"(?i)Claude\s+(Max|Pro|Team|Enterprise)"#),
+            plan: claudePlan(in: metadataText ?? "") ?? claudePlan(in: text),
             windows: windows
         )
     }
@@ -139,7 +149,7 @@ enum CLIUsageParser {
         // belong to model-specific limits (for example Codex Spark) and stay
         // in `windows`, but must not replace the compact account-week card.
         let weekly = weekReadings.first
-        let plan = capture(in: text, pattern: #"(?i)\((Pro|Plus|Business|Enterprise)\)"#)
+        let plan = codexPlan(in: text)
         // API-key sessions have no subscription quota by design. Treat this
         // as a recognized state instead of asking the user to retry a status
         // screen that cannot contain 5h/weekly limits. Local-log cost/token
@@ -214,6 +224,40 @@ enum CLIUsageParser {
               match.numberOfRanges >= 2,
               let result = Range(match.range(at: 1), in: text) else { return nil }
         return String(text[result]).lowercased()
+    }
+
+    /// Both CLIs may only name a broad plan (`Pro`, `Max`) or may include the
+    /// visible multiplier. Preserve precisely what their status transcript
+    /// says; no tier is inferred from a quota percentage or local costs.
+    private static func claudePlan(in text: String) -> String? {
+        let plan = #"Max(?:\s*(?:(?:x|×)\s*(?:5|20)|(?:5|20)\s*(?:x|×)))?|Pro|Team|Enterprise"#
+        return planCapture(in: text, patterns: [
+            #"(?i)Account\s*:\s*[^\r\n]*?\(("# + plan + #")\)"#,
+            #"(?i)(?:Plan|Subscription)\s*:\s*(?:Claude\s+)?("# + plan + #")\b"#,
+            #"(?i)Claude\s+("# + plan + #")\b"#,
+        ])
+    }
+
+    private static func codexPlan(in text: String) -> String? {
+        let plan = #"Pro(?:\s*(?:(?:x|×)\s*(?:5|20)|(?:5|20)\s*(?:x|×)))?|Plus|Business|Enterprise"#
+        return planCapture(in: text, patterns: [
+            #"(?i)Account\s*:\s*[^\r\n]*?\(("# + plan + #")\)"#,
+            #"(?i)\(("# + plan + #")\)"#,
+        ])
+    }
+
+    private static func planCapture(in text: String, patterns: [String]) -> String? {
+        for pattern in patterns {
+            guard let raw = capture(in: text, pattern: pattern) else { continue }
+            let base = raw.range(of: #"(?i)max|pro|plus|team|business|enterprise"#, options: .regularExpression)
+                .map { String(raw[$0]).lowercased() }
+            guard let base else { continue }
+            guard raw.range(of: #"(?i)(?:x|×)"#, options: .regularExpression) != nil,
+                  let factor = capture(in: raw, pattern: #"(5|20)"#)
+            else { return base }
+            return "\(base) ×\(factor)"
+        }
+        return nil
     }
 
     private static func resetDate(_ text: String) -> Date? {

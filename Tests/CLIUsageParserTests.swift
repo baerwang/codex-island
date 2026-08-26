@@ -27,6 +27,17 @@ struct CLIUsageParserTests {
         expect(claude.windows.allSatisfy { $0.resetAt != nil }, "Claude timezone-tagged resets parse")
         expect(claude.plan == "max", "Claude plan parses")
 
+        let claudeStatusPlan = CLIUsageParser.parseClaude("""
+        Account: user@example.com (Claude Max 20x)
+        Current session
+        ████ 8% used
+        Resets 1:40pm (Asia/Shanghai)
+        Current week (all models)
+        █████████████████▌ 35% used
+        Resets Aug 31 at 12pm (Asia/Shanghai)
+        """, timedOut: false)
+        expect(claudeStatusPlan.plan == "max ×20", "Claude status preserves stated Max multiplier")
+
         let codex = CLIUsageParser.parseCodex("""
         Account: user@example.com (Pro)
         Weekly limit: [███████████████████░] 94% left
@@ -41,6 +52,13 @@ struct CLIUsageParserTests {
         expect(codex.weekly.percentInt == 6, "Codex account weekly remaining maps to used fraction")
         expect(codex.windows.count == 3, "Codex retains every weekly/model window")
         expect(codex.plan == "pro", "Codex plan parses")
+
+        let codexTier = CLIUsageParser.parseCodex("""
+        Account: user@example.com (Pro x5)
+        5h limit: 100% left (resets 16:50)
+        Weekly limit: 94% left (resets 22:14 on 1 Sep)
+        """, timedOut: false)
+        expect(codexTier.plan == "pro ×5", "Codex status preserves stated Pro multiplier")
 
         let redrawnCodex = CLIUsageParser.parseCodex("""
         Weekly limit: 94% left (resets 22:14 on 1 Sep)

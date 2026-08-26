@@ -166,9 +166,6 @@
 "Compact quota" = "Compact quota";
 "Compact quota window" = "Compact quota window";
 "Claude window" = "Claude window";
-"Claude plan label" = "Claude plan label";
-"Auto uses CLI output; choose a tier to show its multiplier." = "Auto uses CLI output; choose a tier to show its multiplier.";
-"Plan label" = "Plan label";
 "Codex window" = "Codex window";
 "5h shows reset time; weekly shows percentage." = "5h shows reset time; weekly shows percentage.";
 "Weekly" = "Weekly";
