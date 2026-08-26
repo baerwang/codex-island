@@ -880,6 +880,15 @@ struct SettingsView: View {
             guard let updated = usage.lastUpdated else { return L10n.tr("idle") }
             return L10n.tr("synced %@", Self.relativeFormatter.localizedString(for: updated, relativeTo: Date()))
         }()
+        // Fetch/config failures are represented on both headline windows.
+        // Render their shared cause once rather than the visibly duplicated
+        // “⚠ proxy required / ⚠ proxy required” status.
+        if let error = u.fiveHour.error,
+           error == u.weekly.error,
+           !u.fiveHour.hasReading,
+           !u.weekly.hasReading {
+            return "\(synced) · ⚠ \(error)"
+        }
         let nums = "\(windowCaption(u.fiveHour)) / \(windowCaption(u.weekly))"
         return "\(synced) · \(nums)"
     }

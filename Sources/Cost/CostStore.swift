@@ -167,6 +167,7 @@ final class CostStore: ObservableObject {
         pollTimer = nil
         intervalCancellable?.cancel()
         intervalCancellable = nil
+        codexRefreshPending = false
     }
 
     private func armTimer() {
