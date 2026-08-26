@@ -229,9 +229,9 @@ enum CLIStatusProbe {
         }
     }
 
-    /// Reap the direct PTY child after escalating its process group. Without
-    /// the final blocking wait, a timed-out polling cycle can leave a zombie
-    /// until the app next handles SIGCHLD.
+    /// Reap the direct PTY child after escalating its process group. This must
+    /// never use a blocking `waitpid(..., 0)`: a misbehaving CLI can otherwise
+    /// turn its own timeout into an unbounded application hang.
     private static func terminateAndReap(_ pid: Int32, master: Int32) {
         var status: Int32 = 0
         // The terminal interrupt is what an interactive user would send. It
@@ -248,7 +248,11 @@ enum CLIStatusProbe {
         }
         kill(-pid, SIGKILL)
         kill(pid, SIGKILL) // Fallback if a terminal implementation changed pgrp.
-        _ = waitpid(pid, &status, 0)
+        let reapDeadline = Date().addingTimeInterval(1)
+        while Date() < reapDeadline {
+            if waitpid(pid, &status, WNOHANG) == pid { return }
+            usleep(50_000)
+        }
     }
 
     private static func registerActiveProcessGroup(_ pid: Int32) {

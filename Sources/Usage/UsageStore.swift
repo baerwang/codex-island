@@ -63,34 +63,29 @@ final class UsageStore: ObservableObject {
             // CODEX_HOME. Run those bounded status sessions together so one
             // slow/API-only profile never delays another account's quota.
             async let claudeResult = UsageFetcher.fetchClaude()
-            var immediateReadings: [(UUID, AppUsage)] = []
-            var seenCodexHomes = Set<String>()
-            let profileReadings = await withTaskGroup(
-                of: (UUID, AppUsage).self, returning: [(UUID, AppUsage)].self
-            ) { group in
-                for profile in profiles {
-                    if let home = profile.canonicalHome, !seenCodexHomes.insert(home).inserted {
-                        immediateReadings.append((profile.id, UsageFetcher.errorPair("duplicate codex home")))
-                    } else {
-                        group.addTask {
-                            (profile.id, await UsageFetcher.fetchCodex(profile: profile, workdir: codexWorkdir))
-                        }
-                    }
-                }
-                var output = immediateReadings
-                for await reading in group { output.append(reading) }
-                return output
-            }
+            async let profileReadings = Self.fetchCodexReadings(profiles, workdir: codexWorkdir)
             let newClaude = await claudeResult
             guard !Task.isCancelled, activeRefreshID == refreshID else {
                 finishRefresh(id: refreshID)
                 return
             }
 
+            // Publish Claude quota as soon as `/usage` finishes. It must not
+            // wait for every Codex profile (or Claude's separate Login method
+            // screen) before the island can show real quota numbers.
+            let claudeNow = Date()
+            claude = AppUsage.merged(fetched: newClaude, retaining: claude, at: claudeNow)
+            UsageHistoryStore.shared.record(provider: .claude, usage: newClaude, at: claudeNow)
+
+            let completedProfileReadings = await profileReadings
+            guard !Task.isCancelled, activeRefreshID == refreshID else {
+                finishRefresh(id: refreshID)
+                return
+            }
+
             let now = Date()
-            claude = AppUsage.merged(fetched: newClaude, retaining: claude, at: now)
             var nextProfiles: [UUID: AppUsage] = [:]
-            for (id, fetched) in profileReadings {
+            for (id, fetched) in completedProfileReadings {
                 let prior = codexByProfile[id] ?? .empty
                 nextProfiles[id] = AppUsage.merged(fetched: fetched, retaining: prior, at: now)
             }
@@ -110,7 +105,6 @@ final class UsageStore: ObservableObject {
                 codex = UsageFetcher.errorPair("codex status unavailable")
                 codexHeadlineProfileID = nil
             }
-            UsageHistoryStore.shared.record(provider: .claude, usage: newClaude, at: now)
             for (profileID, profileUsage) in nextProfiles {
                 UsageHistoryStore.shared.record(
                     provider: .codex, usage: profileUsage, at: now,
@@ -118,7 +112,60 @@ final class UsageStore: ObservableObject {
                 )
             }
             lastUpdated = now
+
+            // Login method is intentionally secondary: it can update the
+            // badge after quota is visible, and an unavailable Status screen
+            // must never turn a successful Usage screen into a parse error.
+            if newClaude.fiveHour.hasReading || newClaude.weekly.hasReading {
+                let loginMethod = await UsageFetcher.fetchClaudeLoginMethod()
+                guard !Task.isCancelled, activeRefreshID == refreshID else {
+                    finishRefresh(id: refreshID)
+                    return
+                }
+                applyClaudeLoginMethod(loginMethod, at: Date())
+            }
             finishRefresh(id: refreshID)
+        }
+    }
+
+    private func applyClaudeLoginMethod(_ method: String?, at now: Date) {
+        guard let method else { return }
+        switch method {
+        case "api", "third-party":
+            claude = AppUsage.merged(
+                fetched: UsageFetcher.noSubscriptionUsage(plan: method),
+                retaining: claude,
+                at: now
+            )
+        case "unauthenticated":
+            claude = AppUsage.merged(
+                fetched: UsageFetcher.unauthenticatedUsage(), retaining: claude, at: now
+            )
+        default:
+            claude.plan = method
+        }
+    }
+
+    nonisolated private static func fetchCodexReadings(
+        _ profiles: [CodexCLIProfile], workdir: String
+    ) async -> [(UUID, AppUsage)] {
+        var immediateReadings: [(UUID, AppUsage)] = []
+        var seenCodexHomes = Set<String>()
+        return await withTaskGroup(
+            of: (UUID, AppUsage).self, returning: [(UUID, AppUsage)].self
+        ) { group in
+            for profile in profiles {
+                if let home = profile.canonicalHome, !seenCodexHomes.insert(home).inserted {
+                    immediateReadings.append((profile.id, UsageFetcher.errorPair("duplicate codex home")))
+                } else {
+                    group.addTask {
+                        (profile.id, await UsageFetcher.fetchCodex(profile: profile, workdir: workdir))
+                    }
+                }
+            }
+            var output = immediateReadings
+            for await reading in group { output.append(reading) }
+            return output
         }
     }
 

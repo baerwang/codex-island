@@ -20,22 +20,24 @@ enum UsageFetcher {
         let quotaUsage = CLIUsageParser.parseClaude(
             quotaTranscript.text, timedOut: quotaTranscript.timedOut
         )
-        // Do not spend a second status-only session when `/usage` itself
-        // failed. A quota error is more useful than a delayed plan badge, and
-        // the next safe poll can try the pair again.
-        guard quotaUsage.fiveHour.hasReading || quotaUsage.weekly.hasReading else {
-            return quotaUsage
-        }
+        return quotaUsage
+    }
+
+    /// Reads only Claude's Login method. Quota windows remain owned by
+    /// `fetchClaude()` so this secondary screen can never delay their first
+    /// publication or overwrite their parser state.
+    static func fetchClaudeLoginMethod() async -> String? {
+        let proxy = await MainActor.run { CLIProviderConfigStore.shared.claudeProxyURL }
+        guard isProxy(proxy),
+              isDirectory(CLIProviderConfigStore.statusWorkdir),
+              let executable = executable(named: "claude")
+        else { return nil }
         let loginTranscript = await CLIStatusProbe.run(.init(
             provider: .claude, command: .status,
-            executable: executable, proxyURL: configuration,
+            executable: executable, proxyURL: proxy,
             workdir: CLIProviderConfigStore.statusWorkdir, codexHome: nil, codexFullAccess: false
         ))
-        return CLIUsageParser.parseClaude(
-            quotaTranscript.text,
-            timedOut: quotaTranscript.timedOut,
-            loginMethodText: loginTranscript.text
-        )
+        return CLIUsageParser.claudeLoginMethod(loginTranscript.text)
     }
 
     static func fetchCodex(profile: CodexCLIProfile, workdir: String) async -> AppUsage {
@@ -167,6 +169,11 @@ enum CLIUsageParser {
             plan: plan,
             windows: windows
         )
+    }
+
+    static func claudeLoginMethod(_ text: String) -> String? {
+        if isUnauthenticated(text) { return "unauthenticated" }
+        return claudePlan(in: text)
     }
 
     static func parseCodex(_ text: String, timedOut: Bool) -> AppUsage {
