@@ -2,7 +2,7 @@ import Foundation
 import Combine
 
 /// One observed reading of a single rate-limit window. `used` is the 0...1
-/// fraction the API reported at `at`.
+/// fraction the CLI status screen reported at `at`.
 struct UsageSample: Codable {
     let at: Date
     let used: Double

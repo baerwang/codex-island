@@ -20,7 +20,9 @@ struct CLIStatusProbeSmoke {
             codexHome: home,
             codexFullAccess: false
         ))
-        print(transcript.text)
-        exit(transcript.timedOut ? 124 : 0)
+        let usage = CLIUsageParser.parseCodex(transcript.text, timedOut: transcript.timedOut)
+        print("Codex: 5h \(usage.fiveHour.percentInt)% used · week \(usage.weekly.percentInt)% used · windows \(usage.windows.count)")
+        if let error = usage.fiveHour.error { print("Codex probe: \(error)") }
+        exit(usage.fiveHour.error == nil && usage.weekly.error == nil ? 0 : 1)
     }
 }

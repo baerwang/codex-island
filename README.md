@@ -91,7 +91,7 @@ brew install --cask ericjypark/tap/codexisland
 
 The first invocation auto-taps `ericjypark/homebrew-tap`. The cask strips the
 Gatekeeper quarantine attribute automatically (CodexIsland is unsigned by
-Apple — Sparkle handles update verification independently).
+Apple).
 
 ### Direct download
 
@@ -138,8 +138,12 @@ the CLI first, then configure the proxy required for each provider:
 - **Codex:** add every account explicitly in Settings; each profile needs a
   display name, `CODEX_HOME`, and its own valid proxy. CodexIsland launches
   `codex` under that `CODEX_HOME`, runs `/status` up to three times in the same
-  PTY session (three seconds apart), and keeps profiles isolated. Empty or
-  invalid profiles do not run.
+  PTY session (three seconds apart), and keeps profiles isolated. Subscription
+  percentages are never added or averaged: with multiple profiles, their
+  named windows are shown separately in the expanded quota list. If `/status`
+  identifies API-key mode, it shows no fabricated subscription quota; local
+  token and cost estimates remain available. Empty or invalid profiles do not
+  run.
 
 The first fetch starts at app launch so the panel usually has values ready by
 the first peek. Opening Settings also triggers a fresh fetch.
@@ -170,17 +174,15 @@ Settings is a custom `NSWindow`, not the system Settings scene. The app still
 runs as an accessory app with no Dock icon and no menu bar.
 
 - **General:** Launch at Login, 5m/15m/30m refresh interval, app language,
-  Always show usage, Low Power Mode, configurable limit alerts, and Sparkle
-  update controls.
+  Always show usage, Low Power Mode, and configurable limit alerts.
 - **Display:** used/remaining percentages, Usage and Cost visualization styles,
   target display, and island width on non-notched screens.
 - **Providers:** Claude/Codex visibility and status, token-counting mode, and a
   manual refresh for local cost data.
 
-Preferences are stored in `UserDefaults` under `MacIsland.*` keys (Sparkle
-manages its own `SU*` update keys, and Launch at Login uses
-`SMAppService.mainApp`). Refresh, display, and provider changes apply live;
-changing the app language offers to restart CodexIsland.
+Preferences are stored in `UserDefaults` under `MacIsland.*` keys, and Launch
+at Login uses `SMAppService.mainApp`. Refresh, display, and provider changes
+apply live; changing the app language offers to restart CodexIsland.
 
 ## Build from source
 
@@ -241,7 +243,6 @@ fields from the tag and freshly built DMG.
 │   ├── Localization/        # Runtime localization helper
 │   ├── Model/
 │   ├── Theme/
-│   ├── Update/              # Sparkle wrapper
 │   ├── Usage/
 │   ├── Views/
 │   └── Window/
@@ -277,16 +278,19 @@ Native app behavior:
   local `NO_PROXY` exclusions) to those CLI sessions.
 - The Cost screen reads local Claude Code session logs from
   `~/.claude/projects/**/*.jsonl` (and `~/.config/claude/...`, plus any path
-  in `CLAUDE_CONFIG_DIR`), Codex session logs from `~/.codex/sessions/`, and
-  OpenCode data from `~/.local/share/opencode/`. Aggregation happens entirely
-  on-device — no log content is uploaded or shared anywhere.
+  in `CLAUDE_CONFIG_DIR`), Codex session logs only from manually configured
+  `CODEX_HOME/sessions/` directories, and OpenCode data from
+  `~/.local/share/opencode/`. Aggregation happens entirely on-device — no log
+  content is uploaded or shared anywhere.
 
 The visitor badge at the top of this README is an external `hits.sh` image that
 counts badge requests. It is not bundled with or contacted by the native app.
 
-The network surface is concentrated in
-[`Sources/Usage/UsageFetcher.swift`](Sources/Usage/UsageFetcher.swift). The
-local log readers live in [`Sources/Cost/`](Sources/Cost/).
+The app's only direct network request is the unauthenticated model-price
+catalog in [`Sources/Cost/PricingCatalog.swift`](Sources/Cost/PricingCatalog.swift).
+[`Sources/Usage/UsageFetcher.swift`](Sources/Usage/UsageFetcher.swift) only
+launches the locally installed CLIs; local log readers live in
+[`Sources/Cost/`](Sources/Cost/).
 
 ## Troubleshooting
 
@@ -298,9 +302,15 @@ The app intentionally does not launch status probes without one.
 Add a profile manually, then enter its absolute `CODEX_HOME` and proxy. The
 app deliberately has no implicit `~/.codex` fallback.
 
+**Codex shows `multiple Codex profiles — see expanded status`.**
+Quota percentages from different accounts cannot be combined. Expand the
+panel or open Settings to see each named profile separately.
+
 **The app shows stale values after an error.**
 That is intentional. `UsageStore` keeps the previous good values when a refresh
-returns only errors, so a temporary 429 does not turn the panel into 0%.
+returns only transient errors, so a temporary CLI failure does not turn the
+panel into 0%. Configuration changes and API-key mode clear any old
+subscription reading instead.
 
 **Why can I not choose 30-second polling?**
 The app starts full interactive CLI status sessions, so it exposes 5m, 15m,
@@ -339,8 +349,6 @@ Settings, and use Settings -> Quit to exit.
 
 - [codexbar](https://github.com/steipete/codexbar) by Peter Steinberger -
   auth-source archaeology for Claude credential resolution.
-- [claudecodeusage](https://github.com/RchGrav/claudecodeusage) by Rich Hickson
-  - the `claude-code/2.1.121` User-Agent requirement on `/api/oauth/usage`.
 - [LaunchAtLogin-Modern](https://github.com/sindresorhus/LaunchAtLogin-Modern)
   by Sindre Sorhus - reference shape for `SMAppService.mainApp`.
 - [Emil Kowalski](https://animations.dev) - animation timing and interaction

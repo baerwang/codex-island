@@ -169,14 +169,13 @@ struct ChartTile: View {
             let delta = max(0, r.timeIntervalSinceNow)
             return L10n.tr("resets in %@", Duration.compact(delta))
         }
-        // "no data" is our internal sentinel for "API returned null for this
-        // window" — most commonly a brand-new 5h period before the first
-        // OAuth call lands. Hide it so the tile reads as a passive
+        // "no data" is our internal sentinel for "CLI did not report this
+        // window" — most commonly a plan that does not report that window.
+        // Hide it so the tile reads as a passive
         // window-context cue (the "5h"/"week" header label communicates the
         // window type) instead of looking broken. Real errors still surface.
-        // A terminal auth failure is handled by ReauthState (which replaces
-        // the tiles entirely), so any error reaching a tile here is a genuine
-        // per-window caption worth showing verbatim.
+        // Any other CLI failure is a genuine per-window caption worth showing
+        // verbatim.
         if let err = window.error, err != "no data" {
             return err
         }

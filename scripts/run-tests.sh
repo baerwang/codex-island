@@ -52,6 +52,22 @@ swiftc \
 
 swiftc \
   -parse-as-library \
+  -framework AppKit \
+  -o "$OUT_DIR/project-cost-tests" \
+  Sources/Model/AppLanguageStore.swift \
+  Sources/Localization/L10n.swift \
+  Sources/Cost/TokenEvent.swift \
+  Sources/Cost/PricingCatalog.swift \
+  Sources/Cost/Pricing.swift \
+  Sources/Cost/CostBucketing.swift \
+  Sources/Cost/CostUsage.swift \
+  Sources/Cost/CostSummary.swift \
+  Tests/ProjectCostTests.swift
+
+"$OUT_DIR/project-cost-tests"
+
+swiftc \
+  -parse-as-library \
   -o "$OUT_DIR/pricing-catalog-tests" \
   Sources/Cost/PricingCatalog.swift \
   Tests/PricingCatalogTests.swift

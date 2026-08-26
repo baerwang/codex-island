@@ -35,18 +35,19 @@ final class UsageStore: ObservableObject {
         refreshTask = Task {
             let profiles = CLIProviderConfigStore.shared.activeCodexProfiles
             let codexWorkdir = CLIProviderConfigStore.shared.codexWorkdir
-            async let claudeResult = UsageFetcher.fetchClaude()
-            let profileReadings = await withTaskGroup(of: (UUID, AppUsage).self, returning: [(UUID, AppUsage)].self) { group in
-                for profile in profiles {
-                    group.addTask {
-                        (profile.id, await UsageFetcher.fetchCodex(profile: profile, workdir: codexWorkdir))
-                    }
-                }
-                var out: [(UUID, AppUsage)] = []
-                for await reading in group { out.append(reading) }
-                return out
+            // Interactive TUI probes are intentionally serialized. Launching
+            // several accounts at once multiplies proxy/CLI load and makes a
+            // user-visible status refresh harder to reason about; the 5m+
+            // cadence has ample room for one bounded session at a time.
+            let newClaude = await UsageFetcher.fetchClaude()
+            var profileReadings: [(UUID, AppUsage)] = []
+            for profile in profiles {
+                guard !Task.isCancelled else { break }
+                profileReadings.append((
+                    profile.id,
+                    await UsageFetcher.fetchCodex(profile: profile, workdir: codexWorkdir)
+                ))
             }
-            let newClaude = await claudeResult
             guard !Task.isCancelled else {
                 loading = false
                 return
@@ -60,13 +61,20 @@ final class UsageStore: ObservableObject {
                 nextProfiles[id] = AppUsage.merged(fetched: fetched, retaining: prior, at: now)
             }
             codexByProfile = nextProfiles
-            if let first = profiles.first, let fetched = nextProfiles[first.id] {
-                codex = fetched
-            } else {
+            switch profiles.count {
+            case 0:
                 codex = UsageFetcher.errorPair("add codex profile")
+            case 1:
+                codex = nextProfiles[profiles[0].id] ?? .empty
+            default:
+                // Subscription percentages from two Codex accounts cannot be
+                // added or averaged. Never choose the first profile as an
+                // implicit default; the expanded quota list keeps each one
+                // visible under its user-defined name.
+                codex = UsageFetcher.errorPair("multiple Codex profiles — see expanded status")
             }
             UsageHistoryStore.shared.record(provider: .claude, usage: newClaude, at: now)
-            if let first = profiles.first, let fetched = nextProfiles[first.id] {
+            if profiles.count == 1, let fetched = nextProfiles[profiles[0].id] {
                 UsageHistoryStore.shared.record(provider: .codex, usage: fetched, at: now)
             }
             lastUpdated = now

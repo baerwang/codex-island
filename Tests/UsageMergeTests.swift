@@ -79,6 +79,23 @@ struct UsageMergeTests {
         expect(!fromCold.fiveHour.hasReading, "cold start with a failed fetch has no reading")
         expect(fromCold.fiveHour.error == "rate limited", "cold start still surfaces the error")
 
+        // Removing the required proxy/profile is not a transient CLI error.
+        // It must clear values captured under the old configuration instead
+        // of presenting another account's stale quota as current.
+        let proxyRemoved = pair(errored("proxy required"), errored("proxy required"))
+        let configurationCleared = AppUsage.merged(fetched: proxyRemoved, retaining: good, at: now)
+        expect(!configurationCleared.fiveHour.hasReading, "missing proxy clears stale 5h value")
+        expect(!configurationCleared.weekly.hasReading, "missing proxy clears stale weekly value")
+        expect(configurationCleared.fiveHour.error == "proxy required", "missing proxy remains actionable")
+
+        let apiOnly = AppUsage(
+            fiveHour: errored("API mode — no subscription quota"),
+            weekly: errored("API mode — no subscription quota"), plan: "api"
+        )
+        let apiCleared = AppUsage.merged(fetched: apiOnly, retaining: good, at: now)
+        expect(!apiCleared.fiveHour.hasReading, "API mode clears stale subscription quota")
+        expect(apiCleared.plan == "api", "API mode is retained as a recognized state")
+
         // Past its own reset, a carried value describes a window that no
         // longer exists — release it rather than show a confident stale number.
         let expiring = pair(reading(0.16, resetIn: 60), reading(0.11, resetIn: 5 * 86400))

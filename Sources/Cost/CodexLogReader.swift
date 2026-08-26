@@ -1,8 +1,8 @@
 import Foundation
 
-/// Walks the local Codex CLI rollout files and emits a TokenEvent for every
-/// turn that recorded usage. Mirrors @ccusage/codex's data path:
-///   - reads from ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
+/// Walks one manually configured Codex CLI home and emits a TokenEvent for
+/// every turn that recorded usage:
+///   - reads from CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl
 ///   - tracks the most recent `turn_context.payload.model` as the active
 ///     model for subsequent `event_msg.token_count` events
 ///   - uses `last_token_usage` (per-turn delta) rather than diffing the
@@ -14,7 +14,7 @@ import Foundation
 /// rollout file has changed, so the steady-state refresh skips re-parsing.
 enum CodexLogReader {
     static func scan(
-        lookbackDays: Int = 30, codexHome: String? = nil, sourceID: String? = nil,
+        lookbackDays: Int = 30, codexHome: String, sourceID: String? = nil,
         sourceName: String? = nil
     ) -> [TokenEvent] {
         let cutoff = Date().addingTimeInterval(-Double(lookbackDays) * 86400)
@@ -47,12 +47,8 @@ enum CodexLogReader {
         return out
     }
 
-    private static func sessionsRoot(codexHome: String?) -> URL {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        if let codexHome, !codexHome.isEmpty {
-            return URL(fileURLWithPath: codexHome).appendingPathComponent("sessions", isDirectory: true)
-        }
-        return home.appendingPathComponent(".codex/sessions", isDirectory: true)
+    private static func sessionsRoot(codexHome: String) -> URL {
+        URL(fileURLWithPath: codexHome).appendingPathComponent("sessions", isDirectory: true)
     }
 
     /// Parse a single file end-to-end. Threads the active model through the

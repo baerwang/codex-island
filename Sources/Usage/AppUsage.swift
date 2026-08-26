@@ -18,7 +18,7 @@ enum UsageWindow: String, Codable {
 }
 
 /// One rate-limit window (e.g. Claude's 5h, Codex's 7d). usedPercent is
-/// normalized to 0...1 regardless of what the upstream API returns.
+/// normalized to 0...1 regardless of how the CLI renders it.
 struct WindowUsage {
     let usedPercent: Double
     let resetAt: Date?
@@ -85,8 +85,8 @@ struct ProviderQuotaWindow: Identifiable, Equatable {
 struct AppUsage {
     var fiveHour: WindowUsage
     var weekly: WindowUsage
-    /// Provider-reported plan tier — Claude's `subscriptionType` (free/pro/max)
-    /// or Codex's `plan_type` (free/plus/pro). nil when unknown.
+    /// Provider-reported plan tier parsed from the CLI status screen. nil when
+    /// the CLI does not render a recognizable tier.
     var plan: String?
     /// Every parsed CLI quota window, including model-specific windows that do
     /// not fit the island's compact two-tile layout.
@@ -125,7 +125,7 @@ struct AppUsage {
         // A missing proxy/profile/workdir is a deliberate configuration state,
         // not a transient CLI failure. Never keep a previous percentage on
         // screen after the user disables the only allowed launch path.
-        if isConfigurationFailure(fetched) { return fetched }
+        if isConfigurationFailure(fetched) || fetched.plan == "api" { return fetched }
         return AppUsage(
             fiveHour: carryForward(fetched.fiveHour, prior: prior.fiveHour, at: now),
             weekly: carryForward(fetched.weekly, prior: prior.weekly, at: now),

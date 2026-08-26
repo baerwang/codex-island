@@ -6,11 +6,6 @@ struct QuotaWindowList: View {
     @ObservedObject private var usage = UsageStore.shared
     @ObservedObject private var config = CLIProviderConfigStore.shared
 
-    private var codexUsage: AppUsage {
-        guard let first = config.activeCodexProfiles.first else { return .empty }
-        return usage.codexByProfile[first.id] ?? .empty
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(L10n.tr("Quota windows"))
@@ -20,7 +15,12 @@ struct QuotaWindowList: View {
                 .foregroundStyle(.white.opacity(0.34))
 
             providerRows(title: "Claude", windows: usage.claude.windows)
-            providerRows(title: "Codex", windows: codexUsage.windows)
+            ForEach(config.activeCodexProfiles) { profile in
+                providerRows(
+                    title: "Codex · \(profile.name)",
+                    windows: usage.codexByProfile[profile.id]?.windows ?? []
+                )
+            }
         }
         .padding(.horizontal, 24)
         .padding(.top, 10)

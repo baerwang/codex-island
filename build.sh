@@ -94,7 +94,9 @@ cat > "$CONTENTS/Info.plist" <<EOF
   <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Eric Park. MIT licensed.</string>
   <key>SUFeedURL</key><string>$SU_FEED_URL</string>
   <key>SUPublicEDKey</key><string>$SU_PUBLIC_KEY</string>
-  <key>SUEnableAutomaticChecks</key><true/>
+  <!-- Sparkle remains a release-time dependency, but runtime update checks
+       are deliberately disabled in the shipped app. -->
+  <key>SUEnableAutomaticChecks</key><false/>
 </dict>
 </plist>
 EOF

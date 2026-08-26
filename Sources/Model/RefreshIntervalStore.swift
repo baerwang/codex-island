@@ -1,8 +1,8 @@
 import Foundation
 
-/// User-controlled poll cadence for `UsageStore`. The Anthropic
-/// `/api/oauth/usage` endpoint is heavily rate-limited per token, so we
-/// only expose 5min / 15min / 30min — never anything below 5min.
+/// User-controlled poll cadence for `UsageStore`. Interactive CLI probes are
+/// deliberately bounded work, so we expose only 5min / 15min / 30min — never
+/// anything below 5min.
 @MainActor
 final class RefreshIntervalStore: ObservableObject {
     static let shared = RefreshIntervalStore()

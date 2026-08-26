@@ -71,26 +71,43 @@ enum UsageFetcher {
 
 enum CLIUsageParser {
     static func parseClaude(_ text: String, timedOut: Bool) -> AppUsage {
+        // The rendered TUI uses box/block glyphs for separators and progress
+        // bars. Normalize them to whitespace before matching its labels.
+        let screen = text.replacingOccurrences(
+            of: #"[\u{2500}-\u{259F}]"#, with: " ", options: .regularExpression
+        )
         let session = reading(
-            in: text,
-            pattern: #"(?is)Current\s+session.*?(\d{1,3})%\s+used.*?Resets\s+([^\r\n]+)"#
+            in: screen,
+            pattern: #"(?is)Curren(?:t)?\s+session.*?(\d{1,3})%\s*used.*?Resets\s*([^\r\n]+)"#
         )
         let weekly = reading(
-            in: text,
-            pattern: #"(?is)Current\s+week\s*\(all\s+models\).*?(\d{1,3})%\s+used.*?Resets\s+([^\r\n]+)"#
+            in: screen,
+            pattern: #"(?is)Current\s+week\s*\(all\s+models\).*?(\d{1,3})%\s*used.*?Resets\s*([^\r\n]+)"#
         )
         let fable = reading(
-            in: text,
-            pattern: #"(?is)Current\s+week\s*\(Fable\).*?(\d{1,3})%\s+used.*?Resets\s+([^\r\n]+)"#
+            in: screen,
+            pattern: #"(?is)Current\s+week\s*\(Fable\).*?(\d{1,3})%\s*used.*?Resets\s*([^\r\n]+)"#
         )
-        guard let session, let weekly else {
+        // At the moment the Usage tab has finished drawing, the first two
+        // percent/reset pairs are necessarily current-session then all-model
+        // week. This fallback handles Claude redraws that overwrite part of
+        // the label while preserving label-first parsing for normal text.
+        let ordered = readings(
+            in: screen,
+            pattern: #"(?is)(\d{1,3})%\s*used.*?Resets\s*([^\r\n]+)"#
+        )
+        guard let session = session ?? ordered.first,
+              let weekly = weekly ?? ordered.dropFirst().first
+        else {
             return UsageFetcher.errorPair(timedOut ? "claude timeout" : "usage parse error")
         }
         var windows = [
             detail(id: "claude.current", label: "Current session", reading: session),
             detail(id: "claude.week.all", label: "Current week (all models)", reading: weekly),
         ]
-        if let fable { windows.append(detail(id: "claude.week.fable", label: "Current week (Fable)", reading: fable)) }
+        if let fable = fable ?? ordered.dropFirst(2).first {
+            windows.append(detail(id: "claude.week.fable", label: "Current week (Fable)", reading: fable))
+        }
         return AppUsage(
             fiveHour: window(used: session.percent, reset: session.reset),
             weekly: window(used: weekly.percent, reset: weekly.reset),
@@ -100,17 +117,35 @@ enum CLIUsageParser {
     }
 
     static func parseCodex(_ text: String, timedOut: Bool) -> AppUsage {
-        let fiveHour = reading(
+        let fiveHours = readings(
             in: text,
             pattern: #"(?is)5h\s+limit:.*?(\d{1,3})%\s+left.*?\(resets\s+([^\)]+)\)"#,
             remaining: true
         )
-        let weekReadings = readings(
+        let weekReadings = uniqueReadings(readings(
             in: text,
             pattern: #"(?is)Weekly\s+limit:.*?(\d{1,3})%\s+left.*?\(resets\s+([^\)]+)\)"#,
             remaining: true
-        )
+        ))
+        // A TUI redraw re-emits its full table into the PTY transcript. The
+        // last 5h value is the final screen; weekly rows are de-duplicated so
+        // that one account weekly limit plus one model weekly limit stays two
+        // rows instead of being repeated for each /status refresh.
+        let fiveHour = fiveHours.last
         let weekly = weekReadings.last
+        let plan = capture(in: text, pattern: #"(?i)\((Pro|Plus|Business|Enterprise)\)"#)
+        // API-key sessions have no subscription quota by design. Treat this
+        // as a recognized state instead of asking the user to retry a status
+        // screen that cannot contain 5h/weekly limits. Local-log cost/token
+        // aggregation remains available for the same configured CODEX_HOME.
+        if fiveHour == nil || weekly == nil,
+           text.range(of: #"(?i)api[- ]key"#, options: .regularExpression) != nil {
+            return AppUsage(
+                fiveHour: WindowUsage(usedPercent: 0, resetAt: nil, error: "API mode — no subscription quota"),
+                weekly: WindowUsage(usedPercent: 0, resetAt: nil, error: "API mode — no subscription quota"),
+                plan: "api"
+            )
+        }
         guard let fiveHour, let weekly else {
             return UsageFetcher.errorPair(timedOut ? "codex timeout" : "status refresh pending")
         }
@@ -122,7 +157,7 @@ enum CLIUsageParser {
         return AppUsage(
             fiveHour: window(used: fiveHour.percent, reset: fiveHour.reset),
             weekly: window(used: weekly.percent, reset: weekly.reset),
-            plan: capture(in: text, pattern: #"(?i)\((Pro|Plus|Business|Enterprise)\)"#),
+            plan: plan,
             windows: windows
         )
     }
@@ -158,6 +193,15 @@ enum CLIUsageParser {
         }
     }
 
+    private static func uniqueReadings(
+        _ readings: [(percent: Int, reset: String)]
+    ) -> [(percent: Int, reset: String)] {
+        var seen = Set<String>()
+        return readings.filter { item in
+            seen.insert("\(item.percent)::\(item.reset)").inserted
+        }
+    }
+
     private static func capture(in text: String, pattern: String) -> String? {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let range = NSRange(text.startIndex..., in: text)
@@ -168,8 +212,10 @@ enum CLIUsageParser {
     }
 
     private static func resetDate(_ text: String) -> Date? {
+        let timeZoneID = capture(in: text, pattern: #"\(([A-Za-z_]+/[A-Za-z_]+)\)"#)
+        let timeZone = timeZoneID.flatMap(TimeZone.init(identifier:)) ?? .current
         let trimmed = text
-            .replacingOccurrences(of: "(Asia/Shanghai)", with: "")
+            .replacingOccurrences(of: #"\s*\([A-Za-z_]+/[A-Za-z_]+\)"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let now = Date()
         if let relative = relativeSeconds(trimmed) { return now.addingTimeInterval(relative) }
@@ -183,7 +229,7 @@ enum CLIUsageParser {
         for (format, input) in candidates {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+            formatter.timeZone = timeZone
             formatter.dateFormat = format
             guard var parsed = formatter.date(from: input) else { continue }
             var calendar = Calendar(identifier: .gregorian)

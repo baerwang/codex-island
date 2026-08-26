@@ -24,6 +24,7 @@ struct CLIUsageParserTests {
         expect(claude.fiveHour.percentInt == 8, "Claude current session parses")
         expect(claude.weekly.percentInt == 35, "Claude all-model weekly parses")
         expect(claude.windows.count == 3, "Claude Fable window retained")
+        expect(claude.windows.allSatisfy { $0.resetAt != nil }, "Claude timezone-tagged resets parse")
         expect(claude.plan == "max", "Claude plan parses")
 
         let codex = CLIUsageParser.parseCodex("""
@@ -40,6 +41,59 @@ struct CLIUsageParserTests {
         expect(codex.weekly.percentInt == 71, "Codex model weekly remaining maps to used fraction")
         expect(codex.windows.count == 3, "Codex retains every weekly/model window")
         expect(codex.plan == "pro", "Codex plan parses")
+
+        let redrawnCodex = CLIUsageParser.parseCodex("""
+        Weekly limit: 94% left (resets 22:14 on 1 Sep)
+        GPT-5.3-Codex-Spark limit:
+        5h limit: 100% left (resets 16:50)
+        Weekly limit: 29% left (resets 17:16 on 31 Aug)
+        Weekly limit: 94% left (resets 22:14 on 1 Sep)
+        GPT-5.3-Codex-Spark limit:
+        5h limit: 100% left (resets 16:50)
+        Weekly limit: 29% left (resets 17:16 on 31 Aug)
+        """, timedOut: false)
+        expect(redrawnCodex.windows.count == 3, "Codex TUI redraws do not duplicate windows")
+        expect(redrawnCodex.weekly.percentInt == 71, "Codex final model weekly survives redraw")
+
+        let codexAPI = CLIUsageParser.parseCodex("""
+        Authentication: API key
+        API-key authentication does not include subscription limits.
+        """, timedOut: false)
+        expect(codexAPI.plan == "api", "Codex API-key mode is recognized")
+        expect(!codexAPI.fiveHour.hasReading, "Codex API-key mode does not fabricate subscription quota")
+
+        // Claude writes its Usage tab by moving the cursor around an
+        // alternate screen. Removing ANSI codes alone joins cells such as
+        // `Resets1:40pm`; the probe must recover the displayed screen before
+        // passing it to the text parser.
+        let claudeTUI = Data("""
+        \u{1B}[?1049h\u{1B}[2J\u{1B}[3;4HCurrent session\u{1B}[4;4H████ 8% used\u{1B}[5;4HResets 1:40pm (Asia/Shanghai)\u{1B}[7;4HCurrent week (all models)\u{1B}[8;4H████████ 35% used\u{1B}[9;4HResets Aug 31 at 12pm (Asia/Shanghai)\u{1B}[11;4HCurrent week (Fable)\u{1B}[12;4H████████ 61% used\u{1B}[13;4HResets Aug 31 at 12pm (Asia/Shanghai)\u{1B}[?1049l
+        """.utf8)
+        let renderedClaudeTUI = CLIStatusProbe.terminalText(claudeTUI)
+        let parsedClaudeTUI = CLIUsageParser.parseClaude(renderedClaudeTUI, timedOut: false)
+        expect(renderedClaudeTUI.contains("Current session"), "terminal renderer preserves cursor-positioned labels")
+        expect(parsedClaudeTUI.fiveHour.percentInt == 8, "cursor-positioned Claude session parses")
+        expect(parsedClaudeTUI.weekly.percentInt == 35, "cursor-positioned Claude weekly parses")
+        expect(parsedClaudeTUI.windows.count == 3, "cursor-positioned Claude keeps all windows")
+
+        // A real Claude redraw can temporarily leave its progress bar over a
+        // label and use box drawing for its section rule. The completed Usage
+        // screen still has three ordered percent/reset pairs; this is the
+        // shape the fallback above is designed to accept offline.
+        let redrawnClaude = CLIUsageParser.parseClaude("""
+        Curren█ session
+        ██████▌                                            13% used
+        Resets 1:40pm (Asia/Shanghai)
+        ───Current─week─(all─models)───────────────────────────────────
+        ██████████████████                                 36% used
+        Resets Aug 31 at 12pm (Asia/Shanghai)
+        ── Current week (Fable)
+        ███████████████████████████████▌                    63% used
+        Resets Aug 31 at 12pm (Asia/Shanghai)
+        """, timedOut: false)
+        expect(redrawnClaude.fiveHour.percentInt == 13, "Claude redraw fallback parses session")
+        expect(redrawnClaude.weekly.percentInt == 36, "Claude redraw fallback parses all-model week")
+        expect(redrawnClaude.windows.count == 3, "Claude redraw fallback retains model week")
 
         if failures > 0 { exit(1) }
     }
