@@ -166,6 +166,9 @@
 "Compact quota" = "紧凑额度显示";
 "Compact quota window" = "紧凑额度窗口";
 "Claude window" = "Claude 窗口";
+"Claude plan label" = "Claude 套餐标签";
+"Auto uses CLI output; choose a tier to show its multiplier." = "自动使用 CLI 输出；也可选择套餐层级以显示倍率。";
+"Plan label" = "套餐标签";
 "Codex window" = "Codex 窗口";
 "5h shows reset time; weekly shows percentage." = "5 小时显示距重置时间；周额度显示百分比。";
 "Weekly" = "周额度";

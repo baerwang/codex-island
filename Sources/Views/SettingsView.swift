@@ -538,6 +538,12 @@ struct SettingsView: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 210)
             }
+            SettingsRow(
+                title: "Claude plan label",
+                subtitle: "Auto uses CLI output; choose a tier to show its multiplier."
+            ) {
+                planPresentationPicker($cliConfig.claudePlanPresentation, choices: PlanPresentation.claudeChoices)
+            }
 
             Text(L10n.tr("Codex profiles"))
                 .font(Typography.rowTitle)
@@ -643,6 +649,13 @@ struct SettingsView: View {
             Text(L10n.tr("Auto reads CLI status; API keeps local token and cost stats only."))
                 .font(Typography.micro)
                 .foregroundStyle(.white.opacity(0.36))
+            HStack(spacing: 8) {
+                Text(L10n.tr("Plan label"))
+                    .font(Typography.caption)
+                    .foregroundStyle(.white.opacity(0.50))
+                planPresentationPicker(planPresentationBinding(profile), choices: PlanPresentation.codexChoices)
+                Spacer()
+            }
             Text(codexProfileCaption(reading))
                 .font(Typography.caption)
                 .foregroundStyle(.white.opacity(0.45))
@@ -702,6 +715,26 @@ struct SettingsView: View {
             get: { profile.wrappedValue.effectiveQuotaMode },
             set: { profile.wrappedValue.quotaMode = $0 }
         )
+    }
+
+    private func planPresentationBinding(_ profile: Binding<CodexCLIProfile>) -> Binding<PlanPresentation> {
+        Binding(
+            get: { profile.wrappedValue.effectivePlanPresentation },
+            set: { profile.wrappedValue.planPresentation = $0 }
+        )
+    }
+
+    private func planPresentationPicker(
+        _ selection: Binding<PlanPresentation>, choices: [PlanPresentation]
+    ) -> some View {
+        Picker("", selection: selection) {
+            ForEach(choices, id: \.self) { presentation in
+                Text(L10n.tr(presentation.label)).tag(presentation)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .frame(width: 112)
     }
 
     /// Lets the user pick which token total drives the TOKENS hero on the

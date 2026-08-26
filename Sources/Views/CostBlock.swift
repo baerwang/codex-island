@@ -49,6 +49,7 @@ struct CostTile: View {
     @ObservedObject private var stylePref = CostStylePref.shared
     @ObservedObject private var usageStore = UsageStore.shared
     @ObservedObject private var tokenMode = TokenCountModeStore.shared
+    @ObservedObject private var config = CLIProviderConfigStore.shared
 
     /// Locked to match `ChartTile.tileHeight` so swipe transitions don't
     /// reflow the panel.
@@ -242,11 +243,13 @@ struct CostTile: View {
 
     // MARK: - Derived values
 
-    /// Monthly subscription cost in USD for this provider's currently
-    /// detected plan tier. Auto-mapped from Anthropic's "subscriptionType"
-    /// or OpenAI's "plan_type" so each provider's bar reflects its actual
-    /// plan: Claude Pro $20 / Max $200, Codex Plus $20 / Pro $200.
+    /// Monthly subscription cost in USD for this provider's tier. A tier
+    /// explicitly selected in Settings takes precedence over the generic
+    /// CLI label, so the local-cost comparison stays aligned with its tag.
     private var subscriptionUSD: Double? {
+        if let selected = activePlanPresentation.monthlyReferenceUSD {
+            return selected
+        }
         let plan: String? = {
             switch provider {
             case .claude: return usageStore.claude.plan?.lowercased()
@@ -263,10 +266,18 @@ struct CostTile: View {
         }
     }
 
-    /// Display name of the active plan (Pro / Max / Plus). Used as the
-    /// label under the plan bar so the user always knows what the
-    /// comparison is anchored to.
+    /// Display name of the active plan. Used as the label under the plan
+    /// bar so the user always knows what the comparison is anchored to.
     private var planLabel: String? {
+        let fallback: String? = {
+            switch provider {
+            case .claude: return usageStore.claude.plan
+            case .codex: return usageStore.codex.plan
+            }
+        }()
+        if activePlanPresentation != .auto {
+            return activePlanPresentation.displayLabel(fallback: fallback)
+        }
         let plan: String? = {
             switch provider {
             case .claude: return usageStore.claude.plan?.lowercased()
@@ -280,6 +291,17 @@ struct CostTile: View {
         case (.codex, "plus"): return "Plus"
         case (.codex, "pro"):  return "Pro"
         default: return nil
+        }
+    }
+
+    private var activePlanPresentation: PlanPresentation {
+        switch provider {
+        case .claude:
+            return config.claudePlanPresentation
+        case .codex:
+            return config.codexProfiles.first {
+                $0.id == usageStore.codexHeadlineProfileID
+            }?.effectivePlanPresentation ?? .auto
         }
     }
 

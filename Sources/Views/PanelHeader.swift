@@ -19,7 +19,7 @@ struct PanelHeader: View {
             let claudeOn = visibility.claudeVisible
             let codexOn = visibility.codexVisible
                 && (screenPref.screen != .usage || usageStore.codexHasSubscriptionQuota)
-            providerTitle(name: "Claude", tag: usageStore.claude.plan?.uppercased(),
+            providerTitle(name: "Claude", tag: claudePlanTag,
                           color: IslandColor.claude, alignment: .leading) {
                 EmptyView()
             }
@@ -27,7 +27,7 @@ struct PanelHeader: View {
                 .animation(.openMorph, value: claudeOn)
                 .accessibilityHidden(!claudeOn)
             Color.clear.frame(width: notch.width)
-            providerTitle(name: "Codex", tag: usageStore.codex.plan?.uppercased(),
+            providerTitle(name: "Codex", tag: codexPlanTag,
                           color: IslandColor.codex, alignment: .trailing) {
                 codexProfilePicker
             }
@@ -39,6 +39,17 @@ struct PanelHeader: View {
         .padding(.horizontal, 16)
         .padding(.top, 4)
         .padding(.bottom, min(14, max(0, notch.height - 22 - 4)))
+    }
+
+    private var claudePlanTag: String? {
+        config.claudePlanPresentation.displayLabel(fallback: usageStore.claude.plan)
+    }
+
+    private var codexPlanTag: String? {
+        let presentation = config.codexProfiles.first {
+            $0.id == usageStore.codexHeadlineProfileID
+        }?.effectivePlanPresentation ?? .auto
+        return presentation.displayLabel(fallback: usageStore.codex.plan)
     }
 
     @ViewBuilder
