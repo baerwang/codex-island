@@ -798,13 +798,13 @@ struct SettingsView: View {
             sectionLabel("Compact quota")
             SettingsRow(
                 title: "Claude window",
-                subtitle: "Window shown in the compact island."
+                subtitle: "5h shows reset time; weekly shows percentage."
             ) {
                 quotaWindowPicker($quotaWindow.claude)
             }
             SettingsRow(
                 title: "Codex window",
-                subtitle: "Window shown in the compact island."
+                subtitle: "5h shows reset time; weekly shows percentage."
             ) {
                 quotaWindowPicker($quotaWindow.codex)
             }

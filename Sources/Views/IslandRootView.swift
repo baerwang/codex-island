@@ -522,7 +522,8 @@ private struct PeekPillOverlay: View {
             tint: tint,
             alignment: provider == .claude ? .leading : .trailing,
             severity: severity,
-            windowLengthFallback: currentWindowIsWeekly ? "7d" : "5h"
+            windowLengthFallback: currentWindowIsWeekly ? "7d" : "5h",
+            metric: CompactQuotaSelection.metric(for: selectedWindowKind)
         )
         .padding(provider == .claude ? .leading : .trailing, 14)
         .padding(.top, topPadding)
@@ -557,10 +558,14 @@ private struct PeekPillOverlay: View {
     }
 
     private var currentWindowIsWeekly: Bool {
+        selectedWindowKind == .weekly
+    }
+
+    private var selectedWindowKind: UsageWindow {
         let usage: AppUsage = provider == .claude ? usageStore.claude : usageStore.codex
         return CompactQuotaSelection.select(
             usage: usage, preferred: quotaWindow.selectedWindow(for: provider)
-        ).kind == .weekly
+        ).kind
     }
 
     private var severity: AlertEngine.Severity {

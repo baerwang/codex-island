@@ -160,7 +160,7 @@
 "Compact quota window" = "紧凑额度窗口";
 "Claude window" = "Claude 窗口";
 "Codex window" = "Codex 窗口";
-"Window shown in the compact island." = "紧凑岛上显示的额度窗口。";
+"5h shows reset time; weekly shows percentage." = "5 小时显示距重置时间；周额度显示百分比。";
 "Weekly" = "周额度";
 "5 hours" = "5 小时";
 "Quota mode" = "额度模式";

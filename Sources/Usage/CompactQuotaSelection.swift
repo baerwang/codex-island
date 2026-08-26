@@ -1,9 +1,18 @@
 import Foundation
 
+enum CompactQuotaMetric: Equatable {
+    case resetCountdown
+    case percentage
+}
+
 /// Pure compact-island window choice. Honor the user's provider-specific
 /// preference when available, but fall back to the other real reading rather
 /// than showing an empty weekly/5h tile on plans that omit one window.
 enum CompactQuotaSelection {
+    static func metric(for window: UsageWindow) -> CompactQuotaMetric {
+        window == .fiveHour ? .resetCountdown : .percentage
+    }
+
     static func select(usage: AppUsage, preferred: UsageWindow) -> (window: WindowUsage, kind: UsageWindow) {
         let selected = window(usage, kind: preferred)
         if selected.hasReading { return (selected, preferred) }

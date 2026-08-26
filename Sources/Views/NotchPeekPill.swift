@@ -5,9 +5,9 @@ import SwiftUI
 /// directly on the dark silhouette, like the logos.
 ///
 /// Renders one of three states:
-///   • value:    "32% · 2h" / "0% · 6d 23h" (active countdown) or
-///               "0% · 5h" (window-length fallback at lower opacity when no
-///               active resetAt is known)
+///   • value:    chosen 5h window → "2h" countdown; chosen weekly window →
+///               "32%" percentage. The compact pill deliberately avoids
+///               showing both so each provider side stays scannable.
 ///   • loading:  small pulsing dot (only when `loading && usedPercent == 0`)
 ///   • errored:  "—%"         (when error is set and we have no value)
 ///
@@ -22,6 +22,7 @@ struct NotchPeekPill: View {
     /// match the window actually displayed ("5h", or "7d" for the Codex
     /// weekly fallback on weekly-only plans).
     var windowLengthFallback: String = "5h"
+    var metric: CompactQuotaMetric = .percentage
     @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
 
     var body: some View {
@@ -33,20 +34,16 @@ struct NotchPeekPill: View {
                     .font(Typography.bodyNumber)
                     .foregroundStyle(.white.opacity(0.40))
             } else {
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     if alignment == .leading {
                         // Left pill: percent on the outside (left), hours
                         // remaining on the inside (toward the notch).
                         if severity != .none { warningGlyph }
-                        percentLabel
-                        separator
-                        resetLabel
+                        compactValue
                     } else {
                         // Right pill: mirrored so percent stays on the
                         // outside (right) and hours remaining stays inside.
-                        resetLabel
-                        separator
-                        percentLabel
+                        compactValue
                         if severity != .none { warningGlyph }
                     }
                 }
@@ -69,12 +66,6 @@ struct NotchPeekPill: View {
             .foregroundStyle(effectiveTint)
     }
 
-    private var separator: some View {
-        Text("·")
-            .font(Typography.bodyNumber)
-            .foregroundStyle(.white.opacity(0.40))
-    }
-
     /// Lower opacity on the fallback differentiates a passive "5-hour
     /// window" label from an active "5h until reset" countdown — same
     /// glyph shape, weaker visual presence.
@@ -82,6 +73,14 @@ struct NotchPeekPill: View {
         Text(resetText ?? windowLengthFallback)
             .font(Typography.bodyNumber)
             .foregroundStyle(.white.opacity(resetText == nil ? 0.45 : 0.70))
+    }
+
+    @ViewBuilder
+    private var compactValue: some View {
+        switch metric {
+        case .percentage: percentLabel
+        case .resetCountdown: resetLabel
+        }
     }
 
     /// Brand tint by default; alert color when above threshold so the

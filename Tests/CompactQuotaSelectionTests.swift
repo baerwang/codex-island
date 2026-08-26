@@ -19,6 +19,14 @@ struct CompactQuotaSelectionTests {
         expect(weeklyDefault.kind == .weekly && weeklyDefault.window.percentInt == 34, "weekly is the default compact choice")
         let fiveHourChoice = CompactQuotaSelection.select(usage: twoWindow, preferred: .fiveHour)
         expect(fiveHourChoice.kind == .fiveHour && fiveHourChoice.window.percentInt == 12, "5h preference is honored")
+        expect(
+            CompactQuotaSelection.metric(for: fiveHourChoice.kind) == .resetCountdown,
+            "5h compact choice renders reset countdown"
+        )
+        expect(
+            CompactQuotaSelection.metric(for: weeklyDefault.kind) == .percentage,
+            "weekly compact choice renders percentage"
+        )
 
         let weeklyOnly = AppUsage(fiveHour: .unknown, weekly: reading(0.34))
         let fallback = CompactQuotaSelection.select(usage: weeklyOnly, preferred: .fiveHour)

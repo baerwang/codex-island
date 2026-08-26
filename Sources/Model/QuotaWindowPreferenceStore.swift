@@ -26,4 +26,5 @@ final class QuotaWindowPreferenceStore: ObservableObject {
     func selectedWindow(for provider: AlertEngine.Provider) -> UsageWindow {
         provider == .claude ? claude : codex
     }
+
 }
