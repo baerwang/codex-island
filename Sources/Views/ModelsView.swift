@@ -9,9 +9,9 @@ struct ModelsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            providerColumn(provider: .claude, title: "Claude", visible: visibility.claudeVisible)
+            providerColumn(provider: .claude, visible: visibility.claudeVisible)
             hairline
-            providerColumn(provider: .codex, title: "Codex", visible: visibility.codexVisible)
+            providerColumn(provider: .codex, visible: visibility.codexVisible)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.horizontal, 22)
@@ -21,12 +21,9 @@ struct ModelsView: View {
 
     @ViewBuilder
     private func providerColumn(
-        provider: AlertEngine.Provider, title: String, visible: Bool
+        provider: AlertEngine.Provider, visible: Bool
     ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(L10n.tr(title))
-                .font(Typography.rowTitle)
-                .foregroundStyle(.white.opacity(visible ? 0.82 : 0.34))
             if visible {
                 weeklyQuotaStrip(provider: provider)
                 PerModelBreakdown(provider: provider, metric: .tokens)
