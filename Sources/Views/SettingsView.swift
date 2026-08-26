@@ -32,6 +32,15 @@ struct SettingsView: View {
         nonmutating set { activeTabRaw = newValue.rawValue }
     }
 
+    /// Only fields that change a Codex status launch context participate.
+    /// Renaming a profile should not open another interactive CLI session.
+    private var codexStatusFingerprint: String {
+        cliConfig.codexProfiles.map {
+            "\($0.id.uuidString)|\($0.codexHome)|\($0.proxyURL)|\($0.enabled)"
+        }
+        .joined(separator: "\u{1E}")
+    }
+
     private var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
     }
@@ -70,6 +79,9 @@ struct SettingsView: View {
         .frame(minWidth: 440, minHeight: 420)
         .background(Color(red: 0.020, green: 0.020, blue: 0.027))
         .preferredColorScheme(.dark)
+        .onChange(of: cliConfig.claudeProxyURL) { _ in queueCLIStatusRefresh() }
+        .onChange(of: codexStatusFingerprint) { _ in queueCLIStatusRefresh() }
+        .onDisappear { cliRefreshTask?.cancel() }
     }
 
     // MARK: - Tabs
@@ -544,14 +556,11 @@ struct SettingsView: View {
         .padding(.horizontal, 14)
         .padding(.top, 14)
         .padding(.bottom, 10)
-        .onChange(of: cliConfig.claudeProxyURL) { _ in queueCLIStatusRefresh() }
-        .onChange(of: cliConfig.codexProfiles) { _ in queueCLIStatusRefresh() }
-        .onDisappear { cliRefreshTask?.cancel() }
     }
 
     /// A field changes several times while the user types a URL/path. Wait
-    /// until it settles before one status-only refresh; malformed partial
-    /// proxies are rejected by `UsageFetcher` and never launch a CLI.
+    /// until it settles before one status-only refresh. If another refresh is
+    /// still running, `UsageStore` coalesces this into one follow-up pass.
     private func queueCLIStatusRefresh() {
         cliRefreshTask?.cancel()
         cliRefreshTask = Task { @MainActor in

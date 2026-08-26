@@ -16,6 +16,8 @@ final class UsageStore: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var pollTimer: Timer?
     private var intervalCancellable: AnyCancellable?
+    private var refreshPending = false
+    private var activeRefreshID: UUID?
 
     private init() {}
 
@@ -24,14 +26,21 @@ final class UsageStore: ObservableObject {
     }
 
     func refresh() {
-        guard !loading else { return }
+        guard !loading else {
+            // Settings can settle while a previous CLI session is still
+            // running. Coalesce those edits into one follow-up pass rather
+            // than silently making the user wait for the next 5-minute tick.
+            refreshPending = true
+            return
+        }
         if AppEnvironment.isDemo {
             loadDemoUsage()
             return
         }
 
         loading = true
-        refreshTask?.cancel()
+        let refreshID = UUID()
+        activeRefreshID = refreshID
         refreshTask = Task {
             let profiles = CLIProviderConfigStore.shared.activeCodexProfiles
             let codexWorkdir = CLIProviderConfigStore.shared.codexWorkdir
@@ -48,8 +57,8 @@ final class UsageStore: ObservableObject {
                     await UsageFetcher.fetchCodex(profile: profile, workdir: codexWorkdir)
                 ))
             }
-            guard !Task.isCancelled else {
-                loading = false
+            guard !Task.isCancelled, activeRefreshID == refreshID else {
+                finishRefresh(id: refreshID)
                 return
             }
 
@@ -78,7 +87,18 @@ final class UsageStore: ObservableObject {
                 UsageHistoryStore.shared.record(provider: .codex, usage: fetched, at: now)
             }
             lastUpdated = now
-            loading = false
+            finishRefresh(id: refreshID)
+        }
+    }
+
+    private func finishRefresh(id: UUID) {
+        guard activeRefreshID == id else { return }
+        activeRefreshID = nil
+        refreshTask = nil
+        loading = false
+        if refreshPending {
+            refreshPending = false
+            refresh()
         }
     }
 
@@ -100,8 +120,11 @@ final class UsageStore: ObservableObject {
         pollTimer = nil
         intervalCancellable?.cancel()
         intervalCancellable = nil
+        refreshPending = false
         refreshTask?.cancel()
         refreshTask = nil
+        activeRefreshID = nil
+        loading = false
     }
 
     private func armTimer() {

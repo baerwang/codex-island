@@ -22,6 +22,11 @@ enum CLIStatusProbe {
         let timedOut: Bool
     }
 
+    struct EnvironmentChange: Equatable {
+        let name: String
+        let value: String?
+    }
+
     static func run(_ request: Request) async -> Transcript {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -103,9 +108,7 @@ enum CLIStatusProbe {
             childExited = waitpid(pid, &status, WNOHANG) == pid
             if now.timeIntervalSince(started) >= timeout {
                 timedOut = true
-                kill(-pid, SIGINT)
-                usleep(400_000)
-                kill(-pid, SIGTERM)
+                terminateAndReap(pid)
                 break
             }
             usleep(50_000)
@@ -116,10 +119,9 @@ enum CLIStatusProbe {
 
     private static func launchChild(_ request: Request) -> Never {
         guard chdir(request.workdir) == 0 else { _exit(126) }
-        let proxy = request.proxyURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !proxy.isEmpty {
-            setenv("HTTP_PROXY", proxy, 1)
-            setenv("HTTPS_PROXY", proxy, 1)
+        for change in proxyEnvironmentChanges(provider: request.provider, proxyURL: request.proxyURL) {
+            if let value = change.value { setenv(change.name, value, 1) }
+            else { unsetenv(change.name) }
         }
         if request.provider == .claude { setenv("NO_PROXY", "localhost,127.0.0.1,::1", 1) }
         if let home = request.codexHome { setenv("CODEX_HOME", home, 1) }
@@ -130,6 +132,36 @@ enum CLIStatusProbe {
             if request.codexFullAccess { arguments.append("--dangerously-bypass-approvals-and-sandbox") }
         }
         exec(arguments: arguments)
+    }
+
+    /// Codex profiles may opt into a direct connection. Clearing both upper-
+    /// and lower-case variants matters when the GUI was launched from a shell
+    /// that happened to export a global proxy.
+    static func proxyEnvironmentChanges(provider: Provider, proxyURL: String) -> [EnvironmentChange] {
+        let names = ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]
+        let proxy = proxyURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if proxy.isEmpty {
+            switch provider {
+            case .claude: return [] // Claude is rejected before launch.
+            case .codex: return names.map { EnvironmentChange(name: $0, value: nil) }
+            }
+        }
+        return names.map { EnvironmentChange(name: $0, value: proxy) }
+    }
+
+    /// Reap the direct PTY child after escalating its process group. Without
+    /// the final blocking wait, a timed-out polling cycle can leave a zombie
+    /// until the app next handles SIGCHLD.
+    private static func terminateAndReap(_ pid: Int32) {
+        var status: Int32 = 0
+        for signal in [SIGINT, SIGTERM] {
+            kill(-pid, signal)
+            usleep(400_000)
+            if waitpid(pid, &status, WNOHANG) == pid { return }
+        }
+        kill(-pid, SIGKILL)
+        kill(pid, SIGKILL) // Fallback if a terminal implementation changed pgrp.
+        _ = waitpid(pid, &status, 0)
     }
 
     private static func exec(arguments: [String]) -> Never {

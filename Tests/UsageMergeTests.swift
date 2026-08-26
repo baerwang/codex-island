@@ -88,6 +88,10 @@ struct UsageMergeTests {
         expect(!configurationCleared.weekly.hasReading, "missing proxy clears stale weekly value")
         expect(configurationCleared.fiveHour.error == "proxy required", "missing proxy remains actionable")
 
+        let invalidCodexProxy = pair(errored("codex proxy invalid"), errored("codex proxy invalid"))
+        let invalidProxyCleared = AppUsage.merged(fetched: invalidCodexProxy, retaining: good, at: now)
+        expect(!invalidProxyCleared.fiveHour.hasReading, "invalid Codex proxy clears stale quota")
+
         let apiOnly = AppUsage(
             fiveHour: errored("API mode — no subscription quota"),
             weekly: errored("API mode — no subscription quota"), plan: "api"

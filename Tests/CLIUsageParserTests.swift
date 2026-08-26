@@ -62,6 +62,21 @@ struct CLIUsageParserTests {
         expect(codexAPI.plan == "api", "Codex API-key mode is recognized")
         expect(!codexAPI.fiveHour.hasReading, "Codex API-key mode does not fabricate subscription quota")
 
+        let directCodexEnvironment = CLIStatusProbe.proxyEnvironmentChanges(
+            provider: .codex, proxyURL: ""
+        )
+        expect(
+            directCodexEnvironment.count == 4 && directCodexEnvironment.allSatisfy { $0.value == nil },
+            "empty Codex proxy clears inherited proxy variables"
+        )
+        let configuredCodexEnvironment = CLIStatusProbe.proxyEnvironmentChanges(
+            provider: .codex, proxyURL: "http://127.0.0.1:7890"
+        )
+        expect(
+            configuredCodexEnvironment.allSatisfy { $0.value == "http://127.0.0.1:7890" },
+            "configured Codex proxy sets every proxy spelling"
+        )
+
         // Claude writes its Usage tab by moving the cursor around an
         // alternate screen. Removing ANSI codes alone joins cells such as
         // `Resets1:40pm`; the probe must recover the displayed screen before

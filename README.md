@@ -138,7 +138,8 @@ Codex proxy:
   and Fable weekly windows. An empty proxy disables the request.
 - **Codex:** add every account explicitly in Settings; each profile needs a
   display name and `CODEX_HOME`, plus an optional HTTP(S) proxy. When blank,
-  CodexIsland does not inject proxy variables. CodexIsland launches
+  CodexIsland clears inherited proxy variables so that profile runs directly.
+  CodexIsland launches
   `codex` under that `CODEX_HOME`, runs `/status` up to three times in the same
   PTY session (three seconds apart), and keeps profiles isolated. Subscription
   percentages are never added or averaged: with multiple profiles, their

@@ -19,17 +19,6 @@ enum UsageFetcher {
         return CLIUsageParser.parseClaude(transcript.text, timedOut: transcript.timedOut)
     }
 
-    /// The island headline uses the first manually-configured, enabled Codex
-    /// profile. Every configured profile remains isolated in configuration;
-    /// expanded settings can surface them individually.
-    static func fetchCodex() async -> AppUsage {
-        guard let profile = await MainActor.run(body: {
-            CLIProviderConfigStore.shared.activeCodexProfiles.first
-        }) else { return errorPair("add codex profile") }
-        let workdir = await MainActor.run { CLIProviderConfigStore.shared.codexWorkdir }
-        return await fetchCodex(profile: profile, workdir: workdir)
-    }
-
     static func fetchCodex(profile: CodexCLIProfile, workdir: String) async -> AppUsage {
         guard !profile.expandedHome.isEmpty,
               FileManager.default.fileExists(atPath: profile.expandedHome)
