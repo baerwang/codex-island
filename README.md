@@ -305,9 +305,10 @@ proxy blank, but if supplied it must be a valid HTTP(S) URL.
 Add a profile manually, then enter its absolute `CODEX_HOME` and proxy. The
 app deliberately has no implicit `~/.codex` fallback.
 
-**Codex shows `multiple Codex profiles — see expanded status`.**
-Quota percentages from different accounts cannot be combined. Expand the
-panel or open Settings to see each named profile separately.
+**Which Codex profile does the compact island show?**
+Quota percentages from different accounts cannot be combined. The island uses
+the first usable enabled profile; Settings and the expanded quota list show
+each named profile separately.
 
 **The app shows stale values after an error.**
 That is intentional. `UsageStore` keeps the previous good values when a refresh

@@ -10,6 +10,7 @@ final class UsageStore: ObservableObject {
     @Published var claude: AppUsage = .empty
     @Published var codex: AppUsage = .empty
     @Published private(set) var codexByProfile: [UUID: AppUsage] = [:]
+    @Published private(set) var codexHeadlineProfileID: UUID?
     @Published var lastUpdated: Date?
     @Published var loading = false
 
@@ -75,21 +76,22 @@ final class UsageStore: ObservableObject {
                 nextProfiles[id] = AppUsage.merged(fetched: fetched, retaining: prior, at: now)
             }
             codexByProfile = nextProfiles
-            switch profiles.count {
-            case 0:
+            if profiles.isEmpty {
                 codex = UsageFetcher.errorPair("add codex profile")
-            case 1:
-                codex = nextProfiles[profiles[0].id] ?? .empty
-            default:
-                // Subscription percentages from two Codex accounts cannot be
-                // added or averaged. Never choose the first profile as an
-                // implicit default; the expanded quota list keeps each one
-                // visible under its user-defined name.
-                codex = UsageFetcher.errorPair("multiple Codex profiles — see expanded status")
+                codexHeadlineProfileID = nil
+            } else if let headline = selectCodexHeadline(profiles: profiles, readings: nextProfiles) {
+                // Quotas from accounts are never combined. The compact island
+                // shows one usable manually configured profile; Settings and
+                // the expanded quota list retain every profile separately.
+                codex = headline.usage
+                codexHeadlineProfileID = headline.id
+            } else {
+                codex = UsageFetcher.errorPair("codex status unavailable")
+                codexHeadlineProfileID = nil
             }
             UsageHistoryStore.shared.record(provider: .claude, usage: newClaude, at: now)
-            if profiles.count == 1, let fetched = nextProfiles[profiles[0].id] {
-                UsageHistoryStore.shared.record(provider: .codex, usage: fetched, at: now)
+            if let headline = selectCodexHeadline(profiles: profiles, readings: nextProfiles) {
+                UsageHistoryStore.shared.record(provider: .codex, usage: headline.usage, at: now)
             }
             lastUpdated = now
             finishRefresh(id: refreshID)
@@ -105,6 +107,21 @@ final class UsageStore: ObservableObject {
             refreshPending = false
             refresh()
         }
+    }
+
+    private func selectCodexHeadline(
+        profiles: [CodexCLIProfile], readings: [UUID: AppUsage]
+    ) -> (id: UUID, usage: AppUsage)? {
+        let candidates = profiles.compactMap { profile -> (UUID, AppUsage)? in
+            guard let usage = readings[profile.id] else { return nil }
+            return (profile.id, usage)
+        }
+        // Skip a half-filled/inactive template in favor of the first profile
+        // that yielded a usable quota or a recognized API-key state. If none
+        // succeeds, surface the first error so configuration remains visible.
+        return candidates.first {
+            $0.1.fiveHour.hasReading || $0.1.weekly.hasReading || $0.1.plan == "api"
+        } ?? candidates.first
     }
 
     func startAutoRefresh() {
