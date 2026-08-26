@@ -36,13 +36,15 @@ enum CLIStatusProbe {
     }
 
     private static func runSync(_ request: Request) -> Transcript {
+        let launch = ChildLaunch(request: request)
+        defer { launch.release() }
         var master: Int32 = -1
         var window = winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0)
         let pid = forkpty(&master, nil, nil, &window)
         guard pid >= 0 else {
             return Transcript(text: "pty unavailable", raw: Data(), timedOut: false)
         }
-        if pid == 0 { launchChild(request) }
+        if pid == 0 { launchChild(launch) }
 
         _ = fcntl(master, F_SETFL, O_NONBLOCK)
         let started = Date()
@@ -98,7 +100,11 @@ enum CLIStatusProbe {
                now.timeIntervalSince(lastOutputAt) >= 0.25 {
                 switch request.provider {
                 case .claude: write(master, Data("/usage\r".utf8))
-                case .codex: write(master, Data("/status\r".utf8))
+                // Codex's composer accepts the slash command on the first
+                // return and renders the status view on the confirmation
+                // return. A single return has repeatedly left this TUI on the
+                // composer and eventually timed out.
+                case .codex: write(master, Data("/status\r\r".utf8))
                 }
                 commandsSent += 1
                 nextCommandAt = now.addingTimeInterval(3)
@@ -117,21 +123,24 @@ enum CLIStatusProbe {
         return Transcript(text: terminalText(raw), raw: raw, timedOut: timedOut)
     }
 
-    private static func launchChild(_ request: Request) -> Never {
-        guard chdir(request.workdir) == 0 else { _exit(126) }
-        for change in proxyEnvironmentChanges(provider: request.provider, proxyURL: request.proxyURL) {
-            if let value = change.value { setenv(change.name, value, 1) }
-            else { unsetenv(change.name) }
+    /// Runs after `forkpty`. This body must avoid Foundation, Swift strings,
+    /// allocations and other runtime work: macOS can terminate a child that
+    /// touches Objective-C while another thread was initializing a class at
+    /// fork time. `ChildLaunch` converts everything to C pointers beforehand.
+    private static func launchChild(_ launch: ChildLaunch) -> Never {
+        guard chdir(launch.workdir) == 0 else { _exit(126) }
+        if launch.clearProxy {
+            unsetenv("HTTP_PROXY"); unsetenv("HTTPS_PROXY")
+            unsetenv("http_proxy"); unsetenv("https_proxy")
+        } else if let proxy = launch.proxy {
+            setenv("HTTP_PROXY", proxy, 1); setenv("HTTPS_PROXY", proxy, 1)
+            setenv("http_proxy", proxy, 1); setenv("https_proxy", proxy, 1)
         }
-        if request.provider == .claude { setenv("NO_PROXY", "localhost,127.0.0.1,::1", 1) }
-        if let home = request.codexHome { setenv("CODEX_HOME", home, 1) }
-
-        var arguments = [request.executable]
-        if request.provider == .codex {
-            arguments += ["-c", "check_for_update_on_startup=false"]
-            if request.codexFullAccess { arguments.append("--dangerously-bypass-approvals-and-sandbox") }
-        }
-        exec(arguments: arguments)
+        if let noProxy = launch.noProxy { setenv("NO_PROXY", noProxy, 1) }
+        if let codexHome = launch.codexHome { setenv("CODEX_HOME", codexHome, 1) }
+        guard let executable = launch.arguments[0] else { _exit(127) }
+        _ = execvp(executable, launch.arguments)
+        _exit(127)
     }
 
     /// Codex profiles may opt into a direct connection. Clearing both upper-
@@ -164,14 +173,40 @@ enum CLIStatusProbe {
         _ = waitpid(pid, &status, 0)
     }
 
-    private static func exec(arguments: [String]) -> Never {
-        var cStrings = arguments.map { strdup($0) }
-        cStrings.append(nil)
-        cStrings.withUnsafeMutableBufferPointer { buffer in
-            guard let first = buffer.baseAddress?.pointee else { _exit(127) }
-            _ = execvp(first, buffer.baseAddress)
+    private struct ChildLaunch {
+        let workdir: UnsafeMutablePointer<CChar>
+        let proxy: UnsafeMutablePointer<CChar>?
+        let noProxy: UnsafeMutablePointer<CChar>?
+        let codexHome: UnsafeMutablePointer<CChar>?
+        let clearProxy: Bool
+        let arguments: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
+        private let argumentCount: Int
+
+        init(request: Request) {
+            workdir = strdup(request.workdir)
+            let changes = proxyEnvironmentChanges(provider: request.provider, proxyURL: request.proxyURL)
+            clearProxy = changes.contains { $0.value == nil }
+            proxy = changes.first?.value.flatMap { strdup($0) }
+            noProxy = request.provider == .claude ? strdup("localhost,127.0.0.1,::1") : nil
+            codexHome = request.codexHome.flatMap { strdup($0) }
+
+            var values = [request.executable]
+            if request.provider == .codex {
+                values += ["-c", "check_for_update_on_startup=false"]
+                if request.codexFullAccess { values.append("--dangerously-bypass-approvals-and-sandbox") }
+            }
+            argumentCount = values.count
+            arguments = .allocate(capacity: values.count + 1)
+            for (index, value) in values.enumerated() { arguments[index] = strdup(value) }
+            arguments[values.count] = nil
         }
-        _exit(127)
+
+        func release() {
+            free(workdir); if let proxy { free(proxy) }
+            if let noProxy { free(noProxy) }; if let codexHome { free(codexHome) }
+            for index in 0..<argumentCount { if let argument = arguments[index] { free(argument) } }
+            arguments.deallocate()
+        }
     }
 
     private static func readAvailable(_ fd: Int32) -> Data {

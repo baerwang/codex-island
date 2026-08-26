@@ -32,8 +32,8 @@ struct CostBlock: View {
 }
 
 /// One cost cell. Branches on `CostStylePref.style` for the hero
-/// visualization — pure dollars, value multiplier vs a $20/mo baseline,
-/// raw token throughput, or a cumulative trend line. Cmd-click on the
+    /// visualization — pure dollars, value multiplier vs a known subscription
+    /// baseline, raw token throughput, or a cumulative trend line. Cmd-click on the
 /// expanded panel cycles styles (handled in `IslandRootView`).
 struct CostTile: View {
     let color: Color
@@ -74,7 +74,8 @@ struct CostTile: View {
             Group {
                 switch stylePref.style {
                 case .dollar: dollarHero
-                case .multi:  multiplierHero
+                case .multi:
+                    if subscriptionUSD == nil { dollarHero } else { multiplierHero }
                 case .tokens: tokensHero
                 case .spark:  sparkHero
                 }
@@ -98,6 +99,7 @@ struct CostTile: View {
         case .dollar:
             return "$\(formattedDollarsCompact)"
         case .multi:
+            guard subscriptionUSD != nil else { return "$\(formattedDollarsCompact)" }
             let plan = formatBarDollars(planAmount)
             let you = formatBarDollars(window.dollars)
             return L10n.tr("%@ %@ versus you %@", planLabel ?? L10n.tr("Plan"), plan, you)

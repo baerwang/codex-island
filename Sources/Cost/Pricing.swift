@@ -118,6 +118,13 @@ enum Pricing {
             inputPerMillion: 1.75, outputPerMillion: 14,
             cacheCreationPerMillion: 1.75, cacheReadPerMillion: 0.175
         ),
+        // Codex CLI records the Spark reasoning tier under this distinct
+        // local id. It is priced as the GPT-5.3-Codex family unless the
+        // published catalog later supplies a more specific row.
+        "gpt-5.3-codex-spark": Rates(
+            inputPerMillion: 1.75, outputPerMillion: 14,
+            cacheCreationPerMillion: 1.75, cacheReadPerMillion: 0.175
+        ),
         "gpt-5.2-codex": Rates(
             inputPerMillion: 1.75, outputPerMillion: 14,
             cacheCreationPerMillion: 1.75, cacheReadPerMillion: 0.175

@@ -28,7 +28,7 @@ struct PricingTests {
         for model in [
             "claude-fable-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7",
             "claude-sonnet-5", "claude-haiku-4-5-20251001",
-            "gpt-5.6", "gpt-5.3-codex",
+            "gpt-5.6", "gpt-5.3-codex", "gpt-5.3-codex-spark",
         ] {
             expect(Pricing.isKnown(model), "\(model) is priced")
         }

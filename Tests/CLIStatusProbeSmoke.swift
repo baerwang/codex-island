@@ -20,9 +20,27 @@ struct CLIStatusProbeSmoke {
             codexHome: home,
             codexFullAccess: false
         ))
+        if env["STATUS_DIAGNOSTICS"] == "1" {
+            print(sanitizedDiagnostics(transcript.text))
+        }
         let usage = CLIUsageParser.parseCodex(transcript.text, timedOut: transcript.timedOut)
         print("Codex: 5h \(usage.fiveHour.percentInt)% used · week \(usage.weekly.percentInt)% used · windows \(usage.windows.count)")
         if let error = usage.fiveHour.error { print("Codex probe: \(error)") }
         exit(usage.fiveHour.error == nil && usage.weekly.error == nil ? 0 : 1)
+    }
+
+    /// Opt-in, redacted diagnostics for the native PTY harness. Never print a
+    /// raw transcript because it can contain account/path information.
+    static func sanitizedDiagnostics(_ text: String) -> String {
+        text
+            .replacingOccurrences(
+                of: #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#,
+                with: "<account>", options: [.regularExpression, .caseInsensitive]
+            )
+            .replacingOccurrences(of: #"/[A-Za-z0-9._/-]+"#, with: "<path>", options: .regularExpression)
+            .replacingOccurrences(
+                of: #"[0-9a-f]{8}-[0-9a-f-]{27,}"#,
+                with: "<id>", options: [.regularExpression, .caseInsensitive]
+            )
     }
 }
