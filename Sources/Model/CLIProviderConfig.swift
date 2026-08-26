@@ -69,11 +69,6 @@ final class CLIProviderConfigStore: ObservableObject {
         codexProfiles.removeAll { $0.id == id }
     }
 
-    func proxyConfigured(_ value: String) -> Bool {
-        guard let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
-        return (url.scheme == "http" || url.scheme == "https") && url.host != nil
-    }
-
     private func saveClaude() {
         UserDefaults.standard.set(claudeProxyURL, forKey: Self.claudeProxyKey)
     }

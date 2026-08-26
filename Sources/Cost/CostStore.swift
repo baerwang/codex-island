@@ -30,6 +30,7 @@ final class CostStore: ObservableObject {
     private static let cacheDecoder = JSONDecoder()
     private var pollTimer: Timer?
     private var intervalCancellable: AnyCancellable?
+    private var codexRefreshPending = false
 
     private var pollInterval: TimeInterval {
         TimeInterval(RefreshIntervalStore.shared.seconds)
@@ -100,6 +101,38 @@ final class CostStore: ObservableObject {
         }
     }
 
+    /// Configuration changes need fresh project attribution immediately. This
+    /// targets just the Codex side so editing a profile never waits for a
+    /// potentially large Claude log scan to finish.
+    func refreshCodexForConfiguredProfiles() {
+        if AppEnvironment.isDemo {
+            loadDemoData()
+            return
+        }
+        guard !codexLoading else {
+            codexRefreshPending = true
+            return
+        }
+        let days = CostSummary.yearHistoryDays()
+        let profiles = CLIProviderConfigStore.shared.activeCodexProfiles.filter {
+            !$0.expandedHome.isEmpty && FileManager.default.fileExists(atPath: $0.expandedHome)
+        }
+        codexLoading = true
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let openCodeEvents = OpenCodeLogReader.scan(lookbackDays: days)
+            let codexEvents = profiles.flatMap { profile in
+                CodexLogReader.scan(
+                    lookbackDays: days,
+                    codexHome: profile.expandedHome,
+                    sourceID: profile.id.uuidString,
+                    sourceName: profile.name
+                )
+            }
+            let cost = CostSummary.summarize(events: codexEvents + openCodeEvents.filter { $0.provider == .codex })
+            await self?.commitCodex(cost)
+        }
+    }
+
     private func commitClaude(_ cost: ProviderCost) {
         self.claude = cost
         self.claudeLoading = false
@@ -112,6 +145,10 @@ final class CostStore: ObservableObject {
         self.codexLoading = false
         self.lastUpdated = Date()
         persist()
+        if codexRefreshPending {
+            codexRefreshPending = false
+            refreshCodexForConfiguredProfiles()
+        }
     }
 
     func startAutoRefresh() {

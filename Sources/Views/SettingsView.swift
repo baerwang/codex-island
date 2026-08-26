@@ -567,6 +567,7 @@ struct SettingsView: View {
             try? await Task.sleep(nanoseconds: 700_000_000)
             guard !Task.isCancelled else { return }
             usage.refresh()
+            cost.refreshCodexForConfiguredProfiles()
         }
     }
 

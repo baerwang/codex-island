@@ -98,7 +98,7 @@ enum CLIStatusProbe {
                now.timeIntervalSince(lastOutputAt) >= 0.25 {
                 switch request.provider {
                 case .claude: write(master, Data("/usage\r".utf8))
-                case .codex: write(master, Data("/status\r\r".utf8))
+                case .codex: write(master, Data("/status\r".utf8))
                 }
                 commandsSent += 1
                 nextCommandAt = now.addingTimeInterval(3)

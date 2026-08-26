@@ -129,8 +129,8 @@ struct AppUsage {
         return AppUsage(
             fiveHour: carryForward(fetched.fiveHour, prior: prior.fiveHour, at: now),
             weekly: carryForward(fetched.weekly, prior: prior.weekly, at: now),
-            // Plan tier is read from the credential store, not the usage
-            // response, so a failed fetch shouldn't blank the chip's badge.
+            // A failed CLI refresh should not blank a previously parsed plan
+            // badge along with its retained quota reading.
             plan: fetched.plan ?? prior.plan,
             windows: fetched.windows.isEmpty ? prior.windows : fetched.windows
         )
