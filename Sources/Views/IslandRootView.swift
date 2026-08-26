@@ -512,6 +512,7 @@ private struct PeekPillOverlay: View {
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
     @ObservedObject private var usageStore = UsageStore.shared
     @ObservedObject private var alerts = AlertEngine.shared
+    @ObservedObject private var quotaWindow = QuotaWindowPreferenceStore.shared
 
     var body: some View {
         let window = currentWindow
@@ -549,14 +550,17 @@ private struct PeekPillOverlay: View {
     }
 
     private var currentWindow: WindowUsage {
-        switch provider {
-        case .claude: return usageStore.claude.fiveHour
-        case .codex:  return usageStore.codex.peekWindow
-        }
+        let usage: AppUsage = provider == .claude ? usageStore.claude : usageStore.codex
+        return CompactQuotaSelection.select(
+            usage: usage, preferred: quotaWindow.selectedWindow(for: provider)
+        ).window
     }
 
     private var currentWindowIsWeekly: Bool {
-        provider == .codex && usageStore.codex.peekWindowIsWeekly
+        let usage: AppUsage = provider == .claude ? usageStore.claude : usageStore.codex
+        return CompactQuotaSelection.select(
+            usage: usage, preferred: quotaWindow.selectedWindow(for: provider)
+        ).kind == .weekly
     }
 
     private var severity: AlertEngine.Severity {

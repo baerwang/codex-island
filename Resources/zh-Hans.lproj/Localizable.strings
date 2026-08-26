@@ -156,6 +156,13 @@
 "Remaining" = "剩余";
 "Show usage as used or remaining quota." = "将用量百分比显示为已用或剩余额度。";
 "Usage display" = "用量显示";
+"Compact quota" = "紧凑额度显示";
+"Compact quota window" = "紧凑额度窗口";
+"Claude window" = "Claude 窗口";
+"Codex window" = "Codex 窗口";
+"Window shown in the compact island." = "紧凑岛上显示的额度窗口。";
+"Weekly" = "周额度";
+"5 hours" = "5 小时";
 "Quota mode" = "额度模式";
 "Auto reads CLI status; API keeps local token and cost stats only." = "自动读取 CLI 状态；API 仅保留本地 Token 和成本统计。";
 "API/custom mode · local token and cost stats only" = "API/自定义模式 · 仅保留本地 Token 和成本统计";

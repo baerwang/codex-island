@@ -18,6 +18,7 @@ struct SettingsView: View {
     @ObservedObject private var alertPrefs = AlertThresholdStore.shared
     @ObservedObject private var spacing = IslandSpacingStore.shared
     @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
+    @ObservedObject private var quotaWindow = QuotaWindowPreferenceStore.shared
     @ObservedObject private var targetDisplay = IslandTargetDisplayStore.shared
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @ObservedObject private var usage = UsageStore.shared
@@ -157,6 +158,7 @@ struct SettingsView: View {
     private var displayTab: some View {
         VStack(alignment: .leading, spacing: 0) {
             usageDisplaySection
+            quotaWindowSection
             chartSection
             costStyleSection
             targetDisplaySection
@@ -791,6 +793,27 @@ struct SettingsView: View {
         .padding(.bottom, 14)
     }
 
+    private var quotaWindowSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("Compact quota")
+            SettingsRow(
+                title: "Claude window",
+                subtitle: "Window shown in the compact island."
+            ) {
+                quotaWindowPicker($quotaWindow.claude)
+            }
+            SettingsRow(
+                title: "Codex window",
+                subtitle: "Window shown in the compact island."
+            ) {
+                quotaWindowPicker($quotaWindow.codex)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .padding(.bottom, 14)
+    }
+
     private var costStyleSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Cost view", hint: "⌘-click to cycle")
@@ -836,6 +859,17 @@ struct SettingsView: View {
             label: \.label,
             accessibilityPrefix: "Usage display"
         )
+    }
+
+    private func quotaWindowPicker(_ selection: Binding<UsageWindow>) -> some View {
+        Picker("", selection: selection) {
+            Text(L10n.tr("Weekly")).tag(UsageWindow.weekly)
+            Text(L10n.tr("5 hours")).tag(UsageWindow.fiveHour)
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .frame(width: 100)
+        .accessibilityLabel(L10n.tr("Compact quota window"))
     }
 
     private var targetDisplaySection: some View {

@@ -156,6 +156,13 @@
 "Remaining" = "Remaining";
 "Show usage as used or remaining quota." = "Show usage as used or remaining quota.";
 "Usage display" = "Usage display";
+"Compact quota" = "Compact quota";
+"Compact quota window" = "Compact quota window";
+"Claude window" = "Claude window";
+"Codex window" = "Codex window";
+"Window shown in the compact island." = "Window shown in the compact island.";
+"Weekly" = "Weekly";
+"5 hours" = "5 hours";
 "Quota mode" = "Quota mode";
 "Auto reads CLI status; API keeps local token and cost stats only." = "Auto reads CLI status; API keeps local token and cost stats only.";
 "API/custom mode · local token and cost stats only" = "API/custom mode · local token and cost stats only";

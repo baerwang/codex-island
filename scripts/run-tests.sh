@@ -29,6 +29,16 @@ swiftc \
 
 swiftc \
   -parse-as-library \
+  -o "$OUT_DIR/compact-quota-selection-tests" \
+  Sources/Model/UsageDisplayModeStore.swift \
+  Sources/Usage/AppUsage.swift \
+  Sources/Usage/CompactQuotaSelection.swift \
+  Tests/CompactQuotaSelectionTests.swift
+
+"$OUT_DIR/compact-quota-selection-tests"
+
+swiftc \
+  -parse-as-library \
   -o "$OUT_DIR/codex-headline-selection-tests" \
   Sources/Model/PreferenceStorage.swift \
   Sources/Model/CLIProviderConfig.swift \
