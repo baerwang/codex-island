@@ -28,12 +28,15 @@ struct TokenEvent {
     /// Identifies the manually configured Codex profile that emitted the event.
     /// nil for Claude and for legacy/unattributed logs.
     let sourceID: String?
+    /// User-defined Codex profile name, retained so same-named projects from
+    /// two accounts remain distinguishable in the project ledger.
+    let sourceName: String?
 
     init(
         provider: Provider, timestamp: Date, model: String,
         inputTokens: Int, outputTokens: Int, cacheCreationTokens: Int,
         cacheReadTokens: Int, projectID: String? = nil,
-        projectName: String? = nil, sourceID: String? = nil
+        projectName: String? = nil, sourceID: String? = nil, sourceName: String? = nil
     ) {
         self.provider = provider
         self.timestamp = timestamp
@@ -45,5 +48,6 @@ struct TokenEvent {
         self.projectID = projectID
         self.projectName = projectName
         self.sourceID = sourceID
+        self.sourceName = sourceName
     }
 }

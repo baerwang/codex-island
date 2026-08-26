@@ -48,6 +48,12 @@ struct ProjectUsageList: View {
                                 .font(Typography.rowTitle)
                                 .foregroundStyle(.white.opacity(0.88))
                                 .lineLimit(1)
+                            if let source = row.sourceName {
+                                Text(source)
+                                    .font(Typography.micro)
+                                    .foregroundStyle(.white.opacity(0.38))
+                                    .lineLimit(1)
+                            }
                             Spacer(minLength: 6)
                             Text(monthDollars(row.monthDollars))
                                 .font(Typography.bodyNumber)

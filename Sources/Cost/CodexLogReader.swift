@@ -14,7 +14,8 @@ import Foundation
 /// rollout file has changed, so the steady-state refresh skips re-parsing.
 enum CodexLogReader {
     static func scan(
-        lookbackDays: Int = 30, codexHome: String? = nil, sourceID: String? = nil
+        lookbackDays: Int = 30, codexHome: String? = nil, sourceID: String? = nil,
+        sourceName: String? = nil
     ) -> [TokenEvent] {
         let cutoff = Date().addingTimeInterval(-Double(lookbackDays) * 86400)
         var out: [TokenEvent] = []
@@ -38,7 +39,8 @@ enum CodexLogReader {
                     cacheReadTokens: ev.cacheReadTokens,
                     projectID: ev.projectID,
                     projectName: ev.projectName,
-                    sourceID: sourceID
+                    sourceID: sourceID,
+                    sourceName: sourceName
                 ))
             }
         )
@@ -74,7 +76,8 @@ enum CodexLogReader {
             // `event_msg`/`token_count` (usage) — carry these markers. A cheap
             // byte-scan rejects everything else before paying for JSON parsing.
             guard lineData.range(of: tokenCountMarker) != nil
-                    || lineData.range(of: turnContextMarker) != nil else { return }
+                    || lineData.range(of: turnContextMarker) != nil
+                    || lineData.range(of: sessionMetaMarker) != nil else { return }
 
             guard let raw = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
                   let type = raw["type"] as? String else { return }
@@ -87,9 +90,8 @@ enum CodexLogReader {
             }
 
             if type == "turn_context",
-               let payload = raw["payload"] as? [String: Any],
-               let model = payload["model"] as? String {
-                currentModel = model
+               let payload = raw["payload"] as? [String: Any] {
+                if let model = payload["model"] as? String { currentModel = model }
                 if let cwd = payload["cwd"] as? String, !cwd.isEmpty { currentProject = cwd }
                 return
             }
@@ -143,6 +145,7 @@ enum CodexLogReader {
     private static let maxUsefulLineBytes = 1 << 20
     private static let tokenCountMarker = Data("token_count".utf8)
     private static let turnContextMarker = Data("turn_context".utf8)
+    private static let sessionMetaMarker = Data("session_meta".utf8)
 
     // MARK: - Per-file cache
 

@@ -9,6 +9,7 @@ enum UsageFetcher {
             (CLIProviderConfigStore.shared.claudeProxyURL, CLIProviderConfigStore.shared.claudeWorkdir)
         }
         guard isProxy(configuration.0) else { return errorPair("proxy required") }
+        guard isDirectory(configuration.1) else { return errorPair("claude workdir required") }
         guard let executable = executable(named: "claude") else { return errorPair("claude not found") }
 
         let transcript = await CLIStatusProbe.run(.init(
@@ -34,6 +35,7 @@ enum UsageFetcher {
               FileManager.default.fileExists(atPath: profile.expandedHome)
         else { return errorPair("codex home required") }
         guard isProxy(profile.proxyURL) else { return errorPair("proxy required") }
+        guard isDirectory(workdir) else { return errorPair("codex workdir required") }
         guard let executable = executable(named: "codex") else { return errorPair("codex not found") }
 
         let transcript = await CLIStatusProbe.run(.init(
@@ -59,6 +61,11 @@ enum UsageFetcher {
     private static func isProxy(_ raw: String) -> Bool {
         guard let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
         return url.scheme == "http" || url.scheme == "https"
+    }
+
+    private static func isDirectory(_ path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 }
 

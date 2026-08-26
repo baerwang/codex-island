@@ -77,6 +77,7 @@ struct ProjectUsageRow: Identifiable {
     let id: String
     let name: String
     let sourceID: String?
+    let sourceName: String?
     let todayDollars: Double
     let monthDollars: Double
     let todayTokens: Int

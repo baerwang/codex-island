@@ -99,7 +99,7 @@ enum CLIStatusProbe {
     }
 
     private static func launchChild(_ request: Request) -> Never {
-        _ = chdir(request.workdir)
+        guard chdir(request.workdir) == 0 else { _exit(126) }
         setenv("HTTP_PROXY", request.proxyURL, 1)
         setenv("HTTPS_PROXY", request.proxyURL, 1)
         if request.provider == .claude { setenv("NO_PROXY", "localhost,127.0.0.1,::1", 1) }

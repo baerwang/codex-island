@@ -55,7 +55,9 @@ final class CostStore: ObservableObject {
         // There is deliberately no implicit ~/.codex fallback: each Codex
         // account/home must be manually configured before its local session
         // logs become part of the aggregate.
-        let codexProfiles = CLIProviderConfigStore.shared.activeCodexProfiles
+        let codexProfiles = CLIProviderConfigStore.shared.activeCodexProfiles.filter {
+            !$0.expandedHome.isEmpty && FileManager.default.fileExists(atPath: $0.expandedHome)
+        }
         // Only scan OpenCode when at least one provider will consume
         // the result; avoids wasted I/O when both are already loading.
         let openCodeTask: Task<[TokenEvent], Never>?
@@ -86,7 +88,8 @@ final class CostStore: ObservableObject {
                     CodexLogReader.scan(
                         lookbackDays: days,
                         codexHome: profile.expandedHome,
-                        sourceID: profile.id.uuidString
+                        sourceID: profile.id.uuidString,
+                        sourceName: profile.name
                     )
                 }
                 let events = codexEvents

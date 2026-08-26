@@ -11,6 +11,7 @@ enum CostSummary {
     private struct ProjectAccumulator {
         var name: String
         var sourceID: String?
+        var sourceName: String?
         var todayDollars = 0.0
         var monthDollars = 0.0
         var todayTokens = 0
@@ -86,6 +87,7 @@ enum CostSummary {
             let projectID = "\(event.sourceID ?? "local")::\(event.projectID ?? "unattributed")"
             let projectName = event.projectName?.isEmpty == false ? event.projectName! : "Unattributed"
             let sourceID = event.sourceID
+            let sourceName = event.sourceName
 
             if event.timestamp >= historyStart {
                 let eventDay = cal.startOfDay(for: event.timestamp)
@@ -106,7 +108,7 @@ enum CostSummary {
                 let day = (cal.dateComponents([.day], from: event.timestamp).day ?? 1) - 1
                 if day < dailyBuckets.count { dailyBuckets[day] += cost }
                 if isUnpriced { monthUnknown.insert(event.model) }
-                var project = projects[projectID] ?? ProjectAccumulator(name: projectName, sourceID: sourceID)
+                var project = projects[projectID] ?? ProjectAccumulator(name: projectName, sourceID: sourceID, sourceName: sourceName)
                 project.monthDollars += cost
                 project.monthTokens += tokens
                 project.monthBillable += billable
@@ -121,7 +123,7 @@ enum CostSummary {
                 let hour = cal.dateComponents([.hour], from: event.timestamp).hour ?? 0
                 if hour < hourlyBuckets.count { hourlyBuckets[hour] += cost }
                 if isUnpriced { todayUnknown.insert(event.model) }
-                var project = projects[projectID] ?? ProjectAccumulator(name: projectName, sourceID: sourceID)
+                var project = projects[projectID] ?? ProjectAccumulator(name: projectName, sourceID: sourceID, sourceName: sourceName)
                 project.todayDollars += cost
                 project.todayTokens += tokens
                 project.todayBillable += billable
@@ -190,7 +192,7 @@ enum CostSummary {
             ),
             projects: projects.map { key, value in
                 ProjectUsageRow(
-                    id: key, name: value.name, sourceID: value.sourceID,
+                    id: key, name: value.name, sourceID: value.sourceID, sourceName: value.sourceName,
                     todayDollars: value.todayDollars, monthDollars: value.monthDollars,
                     todayTokens: value.todayTokens, monthTokens: value.monthTokens,
                     todayBillableTokens: value.todayBillable, monthBillableTokens: value.monthBillable

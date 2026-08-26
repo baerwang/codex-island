@@ -122,7 +122,11 @@ struct AppUsage {
     /// token can never refresh those numbers again) skip this and assign the
     /// fetched value directly — see `UsageStore.refresh`.
     static func merged(fetched: AppUsage, retaining prior: AppUsage, at now: Date) -> AppUsage {
-        AppUsage(
+        // A missing proxy/profile/workdir is a deliberate configuration state,
+        // not a transient CLI failure. Never keep a previous percentage on
+        // screen after the user disables the only allowed launch path.
+        if isConfigurationFailure(fetched) { return fetched }
+        return AppUsage(
             fiveHour: carryForward(fetched.fiveHour, prior: prior.fiveHour, at: now),
             weekly: carryForward(fetched.weekly, prior: prior.weekly, at: now),
             // Plan tier is read from the credential store, not the usage
@@ -130,6 +134,16 @@ struct AppUsage {
             plan: fetched.plan ?? prior.plan,
             windows: fetched.windows.isEmpty ? prior.windows : fetched.windows
         )
+    }
+
+    private static func isConfigurationFailure(_ usage: AppUsage) -> Bool {
+        let configurationErrors: Set<String> = [
+            "proxy required", "add codex profile", "codex home required",
+            "claude workdir required", "codex workdir required",
+            "claude not found", "codex not found",
+        ]
+        return configurationErrors.contains(usage.fiveHour.error ?? "")
+            && configurationErrors.contains(usage.weekly.error ?? "")
     }
 
     private static func carryForward(
