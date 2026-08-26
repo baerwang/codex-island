@@ -27,8 +27,7 @@ struct UsageView: View {
                 ChartsBlock(color: IslandColor.claude, usage: store.claude,
                             style: style, seed: 1, provider: .claude)
                 hairline
-                ChartsBlock(color: IslandColor.codex, usage: store.codex,
-                            style: style, seed: 3, provider: .codex)
+                CodexUsageBlock(usage: store.codex, style: style)
             case (true, false):
                 ChartsBlock(color: IslandColor.claude, usage: store.claude,
                             style: style, seed: 1, provider: .claude)
@@ -43,8 +42,7 @@ struct UsageView: View {
                     .padding(.horizontal, 12)
                     .transition(breakdownTransition)
                 hairline
-                ChartsBlock(color: IslandColor.codex, usage: store.codex,
-                            style: style, seed: 3, provider: .codex)
+                CodexUsageBlock(usage: store.codex, style: style)
             case (false, false):
                 BothHiddenPlaceholder()
                     .transition(.opacity)
@@ -72,6 +70,35 @@ struct UsageView: View {
             ))
             .frame(width: 1)
             .padding(.vertical, 8)
+    }
+}
+
+/// API/custom Codex providers can legitimately expose no subscription quota.
+/// Make that state explicit instead of rendering two empty black charts.
+struct CodexUsageBlock: View {
+    let usage: AppUsage
+    let style: ChartStyle
+
+    var body: some View {
+        if usage.plan == "api" {
+            VStack(alignment: .leading, spacing: 7) {
+                Text("API/custom")
+                    .font(Typography.rowTitle)
+                    .foregroundStyle(.white.opacity(0.85))
+                Text("No subscription quota")
+                    .font(Typography.label)
+                    .foregroundStyle(.white.opacity(0.52))
+                Text("Local token and cost stats remain available")
+                    .font(Typography.caption)
+                    .foregroundStyle(.white.opacity(0.38))
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.horizontal, 12)
+        } else {
+            ChartsBlock(color: IslandColor.codex, usage: usage,
+                        style: style, seed: 3, provider: .codex)
+        }
     }
 }
 

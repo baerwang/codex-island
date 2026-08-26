@@ -43,35 +43,17 @@ struct PanelHeader: View {
     private var codexProfilePicker: some View {
         let profiles = config.activeCodexProfiles
         if profiles.count > 1 {
-            Menu {
-                ForEach(profiles) { profile in
-                    Button {
-                        usageStore.selectCodexProfile(id: profile.id)
-                    } label: {
-                        let selected = usageStore.codexHeadlineProfileID == profile.id
-                        Text(selected ? "✓ \(profile.name)" : profile.name)
-                    }
-                }
+            Button {
+                usageStore.selectNextCodexProfile(in: profiles)
             } label: {
-                HStack(spacing: 3) {
-                    Text(selectedCodexProfileName(profiles) ?? "Codex")
-                        .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 8, weight: .semibold))
-                }
-                .font(Typography.micro)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.52))
-                .frame(maxWidth: 76, alignment: .trailing)
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityLabel("Codex profile")
+            .buttonStyle(.plain)
+            .help("Switch Codex profile")
+            .accessibilityLabel("Next Codex profile")
         }
-    }
-
-    private func selectedCodexProfileName(_ profiles: [CodexCLIProfile]) -> String? {
-        guard let id = usageStore.codexHeadlineProfileID else { return nil }
-        return profiles.first(where: { $0.id == id })?.name
     }
 
     @ViewBuilder

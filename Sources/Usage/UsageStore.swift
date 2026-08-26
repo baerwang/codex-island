@@ -128,6 +128,16 @@ final class UsageStore: ObservableObject {
         codex = usage
     }
 
+    func selectNextCodexProfile(in profiles: [CodexCLIProfile]) {
+        let available = profiles.filter { codexByProfile[$0.id] != nil }
+        guard !available.isEmpty else { return }
+        let current = codexHeadlineProfileID.flatMap { id in
+            available.firstIndex(where: { $0.id == id })
+        } ?? -1
+        let next = available[(current + 1) % available.count]
+        selectCodexProfile(id: next.id)
+    }
+
     func startAutoRefresh() {
         stopAutoRefresh()
         // Direct rework: old endpoint-derived history is not reused as a
