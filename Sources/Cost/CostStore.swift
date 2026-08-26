@@ -56,9 +56,7 @@ final class CostStore: ObservableObject {
         // There is deliberately no implicit ~/.codex fallback: each Codex
         // account/home must be manually configured before its local session
         // logs become part of the aggregate.
-        let codexProfiles = CLIProviderConfigStore.shared.activeCodexProfiles.filter {
-            !$0.expandedHome.isEmpty && FileManager.default.fileExists(atPath: $0.expandedHome)
-        }
+        let codexProfiles = configuredCodexProfiles()
         // Only scan OpenCode when at least one provider will consume
         // the result; avoids wasted I/O when both are already loading.
         let openCodeTask: Task<[TokenEvent], Never>?
@@ -114,9 +112,7 @@ final class CostStore: ObservableObject {
             return
         }
         let days = CostSummary.yearHistoryDays()
-        let profiles = CLIProviderConfigStore.shared.activeCodexProfiles.filter {
-            !$0.expandedHome.isEmpty && FileManager.default.fileExists(atPath: $0.expandedHome)
-        }
+        let profiles = configuredCodexProfiles()
         codexLoading = true
         Task.detached(priority: .userInitiated) { [weak self] in
             let openCodeEvents = OpenCodeLogReader.scan(lookbackDays: days)
@@ -138,6 +134,19 @@ final class CostStore: ObservableObject {
         self.claudeLoading = false
         self.lastUpdated = Date()
         persist()
+    }
+
+    /// A duplicate CODEX_HOME has identical session files and would otherwise
+    /// double every token/cost row. UsageStore reports the duplicate profile
+    /// as invalid; the cost scanner also defends its aggregate independently.
+    private func configuredCodexProfiles() -> [CodexCLIProfile] {
+        var seenHomes = Set<String>()
+        return CLIProviderConfigStore.shared.activeCodexProfiles.filter { profile in
+            guard let home = profile.canonicalHome,
+                  FileManager.default.fileExists(atPath: home)
+            else { return false }
+            return seenHomes.insert(home).inserted
+        }
     }
 
     private func commitCodex(_ cost: ProviderCost) {

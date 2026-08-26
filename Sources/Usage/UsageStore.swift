@@ -50,8 +50,13 @@ final class UsageStore: ObservableObject {
             // cadence has ample room for one bounded session at a time.
             let newClaude = await UsageFetcher.fetchClaude()
             var profileReadings: [(UUID, AppUsage)] = []
+            var seenCodexHomes = Set<String>()
             for profile in profiles {
                 guard !Task.isCancelled else { break }
+                if let home = profile.canonicalHome, !seenCodexHomes.insert(home).inserted {
+                    profileReadings.append((profile.id, UsageFetcher.errorPair("duplicate codex home")))
+                    continue
+                }
                 profileReadings.append((
                     profile.id,
                     await UsageFetcher.fetchCodex(profile: profile, workdir: codexWorkdir)

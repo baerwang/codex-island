@@ -36,6 +36,21 @@ struct ProjectCostTests {
         expect(summary.today.tokens == 3_450, "provider today total remains the sum of project rows")
         expect(summary.projects.allSatisfy { $0.monthDollars > 0 }, "per-project month dollar estimates are retained")
 
+        let canonicalized = CostSummary.summarize(events: [
+            TokenEvent(
+                provider: .codex, timestamp: now, model: "gpt-5.6-terra",
+                inputTokens: 10, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0,
+                projectID: "/work/shared-project", sourceID: "personal-home", sourceName: "Personal"
+            ),
+            TokenEvent(
+                provider: .codex, timestamp: now, model: "gpt-5.6-terra",
+                inputTokens: 20, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0,
+                projectID: "/work/./shared-project", sourceID: "personal-home", sourceName: "Personal"
+            ),
+        ], now: now)
+        expect(canonicalized.projects.count == 1, "equivalent cwd spellings share one project row")
+        expect(canonicalized.projects[0].todayTokens == 30, "canonical project row keeps combined tokens")
+
         print(failures == 0 ? "ALL PASS" : "\(failures) FAILURE(S)")
         exit(failures == 0 ? 0 : 1)
     }

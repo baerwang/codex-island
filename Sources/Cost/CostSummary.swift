@@ -84,8 +84,10 @@ enum CostSummary {
             let billable = event.inputTokens + event.outputTokens
             let tokens = billable + event.cacheCreationTokens + event.cacheReadTokens
             let isUnpriced = tokens > 0 && !Pricing.isKnown(event.model)
-            let projectID = "\(event.sourceID ?? "local")::\(event.projectID ?? "unattributed")"
-            let projectName = event.projectName?.isEmpty == false ? event.projectName! : "Unattributed"
+            let canonicalProject = canonicalProjectID(event.projectID)
+            let projectID = "\(event.sourceID ?? "local")::\(canonicalProject ?? "unattributed")"
+            let projectName = canonicalProject.map { URL(fileURLWithPath: $0).lastPathComponent }
+                ?? (event.projectName?.isEmpty == false ? event.projectName! : "Unattributed")
             let sourceID = event.sourceID
             let sourceName = event.sourceName
 
@@ -212,6 +214,16 @@ enum CostSummary {
         let yearStart = cal.date(from: cal.dateComponents([.year], from: today)) ?? today
         let yearDays = (cal.dateComponents([.day], from: yearStart, to: today).day ?? 0) + 1
         return max(1, yearDays)
+    }
+
+    private static func canonicalProjectID(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let path = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
     }
 
     private static func dailyTokenBuckets(

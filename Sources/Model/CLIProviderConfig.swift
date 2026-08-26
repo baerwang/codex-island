@@ -25,6 +25,17 @@ struct CodexCLIProfile: Codable, Identifiable, Equatable, Sendable {
     var expandedHome: String {
         NSString(string: codexHome).expandingTildeInPath
     }
+
+    /// Canonical identity for deduplicating profiles that point to the same
+    /// local session tree through `~`, `.` or a symlinked path.
+    var canonicalHome: String? {
+        let expanded = expandedHome.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !expanded.isEmpty else { return nil }
+        return URL(fileURLWithPath: expanded)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+    }
 }
 
 @MainActor
