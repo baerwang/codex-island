@@ -6,6 +6,7 @@ import Combine
 @MainActor
 final class UsageStore: ObservableObject {
     static let shared = UsageStore()
+    private static let preferredCodexProfileKey = "CodexIsland.preferredCodexProfileID"
 
     @Published var claude: AppUsage = .empty
     @Published var codex: AppUsage = .empty
@@ -21,7 +22,10 @@ final class UsageStore: ObservableObject {
     private var refreshPending = false
     private var activeRefreshID: UUID?
 
-    private init() {}
+    private init() {
+        preferredCodexProfileID = UserDefaults.standard.string(forKey: Self.preferredCodexProfileKey)
+            .flatMap(UUID.init(uuidString:))
+    }
 
     var codexHasSubscriptionQuota: Bool {
         codex.fiveHour.hasReading || codex.weekly.hasReading
@@ -53,6 +57,7 @@ final class UsageStore: ObservableObject {
             if let preferredCodexProfileID,
                !profiles.contains(where: { $0.id == preferredCodexProfileID }) {
                 self.preferredCodexProfileID = nil
+                UserDefaults.standard.removeObject(forKey: Self.preferredCodexProfileKey)
             }
             // Every configured account owns an independent PTY, proxy and
             // CODEX_HOME. Run those bounded status sessions together so one
@@ -106,12 +111,10 @@ final class UsageStore: ObservableObject {
                 codexHeadlineProfileID = nil
             }
             UsageHistoryStore.shared.record(provider: .claude, usage: newClaude, at: now)
-            if let headline = CodexHeadlineSelection.select(
-                profiles: profiles, readings: nextProfiles, preferredID: preferredCodexProfileID
-            ) {
+            for (profileID, profileUsage) in nextProfiles {
                 UsageHistoryStore.shared.record(
-                    provider: .codex, usage: headline.usage, at: now,
-                    sourceID: headline.id.uuidString
+                    provider: .codex, usage: profileUsage, at: now,
+                    sourceID: profileID.uuidString
                 )
             }
             lastUpdated = now
@@ -131,11 +134,13 @@ final class UsageStore: ObservableObject {
     }
 
     /// An explicit in-memory profile choice is never an account aggregate and
-    /// is cleared naturally if the profile is removed. It lets the compact
-    /// island switch between manually configured Codex accounts.
+    /// is cleared if the profile is removed. It lets the compact island switch
+    /// between manually configured Codex accounts and persists only after the
+    /// user makes that explicit choice (there is no implicit default profile).
     func selectCodexProfile(id: UUID) {
         guard let usage = codexByProfile[id] else { return }
         preferredCodexProfileID = id
+        UserDefaults.standard.set(id.uuidString, forKey: Self.preferredCodexProfileKey)
         codexHeadlineProfileID = id
         codex = usage
     }
