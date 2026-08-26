@@ -34,12 +34,13 @@ enum UsageFetcher {
         guard !profile.expandedHome.isEmpty,
               FileManager.default.fileExists(atPath: profile.expandedHome)
         else { return errorPair("codex home required") }
-        guard isProxy(profile.proxyURL) else { return errorPair("proxy required") }
+        let proxy = profile.proxyURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard proxy.isEmpty || isProxy(proxy) else { return errorPair("codex proxy invalid") }
         guard isDirectory(workdir) else { return errorPair("codex workdir required") }
         guard let executable = executable(named: "codex") else { return errorPair("codex not found") }
 
         let transcript = await CLIStatusProbe.run(.init(
-            provider: .codex, executable: executable, proxyURL: profile.proxyURL,
+            provider: .codex, executable: executable, proxyURL: proxy,
             workdir: workdir, codexHome: profile.expandedHome, codexFullAccess: false
         ))
         return CLIUsageParser.parseCodex(transcript.text, timedOut: transcript.timedOut)

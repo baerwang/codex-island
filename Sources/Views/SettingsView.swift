@@ -581,7 +581,7 @@ struct SettingsView: View {
             }
             TextField("CODEX_HOME (absolute path)", text: profile.codexHome)
                 .textFieldStyle(.roundedBorder)
-            TextField("Required proxy, e.g. http://127.0.0.1:7890", text: profile.proxyURL)
+            TextField("Optional proxy, e.g. http://127.0.0.1:7890", text: profile.proxyURL)
                 .textFieldStyle(.roundedBorder)
             Text(codexProfileCaption(reading))
                 .font(Typography.caption)

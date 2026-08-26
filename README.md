@@ -130,13 +130,15 @@ follow.
 ## First run
 
 CodexIsland does not ask for passwords, API keys, or OAuth tokens. Sign in to
-the CLI first, then configure the proxy required for each provider:
+the CLI first, then configure the required Claude proxy and any optional
+Codex proxy:
 
 - **Claude:** enter a valid HTTP(S) proxy in Settings. The app launches
   `claude`, sends `/usage`, and parses its Current session, all-model weekly,
   and Fable weekly windows. An empty proxy disables the request.
 - **Codex:** add every account explicitly in Settings; each profile needs a
-  display name, `CODEX_HOME`, and its own valid proxy. CodexIsland launches
+  display name and `CODEX_HOME`, plus an optional HTTP(S) proxy. When blank,
+  CodexIsland does not inject proxy variables. CodexIsland launches
   `codex` under that `CODEX_HOME`, runs `/status` up to three times in the same
   PTY session (three seconds apart), and keeps profiles isolated. Subscription
   percentages are never added or averaged: with multiple profiles, their
@@ -294,9 +296,9 @@ launches the locally installed CLIs; local log readers live in
 
 ## Troubleshooting
 
-**Claude or Codex shows `proxy required`.**
-Add a valid `http://` or `https://` proxy to the corresponding Settings field.
-The app intentionally does not launch status probes without one.
+**Claude shows `proxy required`, or Codex shows `codex proxy invalid`.**
+Claude requires a valid `http://` or `https://` proxy. Codex may leave its
+proxy blank, but if supplied it must be a valid HTTP(S) URL.
 
 **Codex shows `add codex profile` or `codex home required`.**
 Add a profile manually, then enter its absolute `CODEX_HOME` and proxy. The

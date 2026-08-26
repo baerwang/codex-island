@@ -139,7 +139,7 @@ struct AppUsage {
     private static func isConfigurationFailure(_ usage: AppUsage) -> Bool {
         let configurationErrors: Set<String> = [
             "proxy required", "add codex profile", "codex home required",
-            "claude workdir required", "codex workdir required",
+            "codex proxy invalid", "claude workdir required", "codex workdir required",
             "claude not found", "codex not found",
         ]
         return configurationErrors.contains(usage.fiveHour.error ?? "")

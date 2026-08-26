@@ -116,8 +116,11 @@ enum CLIStatusProbe {
 
     private static func launchChild(_ request: Request) -> Never {
         guard chdir(request.workdir) == 0 else { _exit(126) }
-        setenv("HTTP_PROXY", request.proxyURL, 1)
-        setenv("HTTPS_PROXY", request.proxyURL, 1)
+        let proxy = request.proxyURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !proxy.isEmpty {
+            setenv("HTTP_PROXY", proxy, 1)
+            setenv("HTTPS_PROXY", proxy, 1)
+        }
         if request.provider == .claude { setenv("NO_PROXY", "localhost,127.0.0.1,::1", 1) }
         if let home = request.codexHome { setenv("CODEX_HOME", home, 1) }
 
