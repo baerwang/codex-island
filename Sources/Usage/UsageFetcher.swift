@@ -12,11 +12,30 @@ enum UsageFetcher {
         guard isDirectory(CLIProviderConfigStore.statusWorkdir) else { return errorPair("claude workdir required") }
         guard let executable = executable(named: "claude") else { return errorPair("claude not found") }
 
-        let transcript = await CLIStatusProbe.run(.init(
-            provider: .claude, executable: executable, proxyURL: configuration,
+        let quotaTranscript = await CLIStatusProbe.run(.init(
+            provider: .claude, command: .usage,
+            executable: executable, proxyURL: configuration,
             workdir: CLIProviderConfigStore.statusWorkdir, codexHome: nil, codexFullAccess: false
         ))
-        return CLIUsageParser.parseClaude(transcript.text, timedOut: transcript.timedOut)
+        let quotaUsage = CLIUsageParser.parseClaude(
+            quotaTranscript.text, timedOut: quotaTranscript.timedOut
+        )
+        // Do not spend a second status-only session when `/usage` itself
+        // failed. A quota error is more useful than a delayed plan badge, and
+        // the next safe poll can try the pair again.
+        guard quotaUsage.fiveHour.hasReading || quotaUsage.weekly.hasReading else {
+            return quotaUsage
+        }
+        let loginTranscript = await CLIStatusProbe.run(.init(
+            provider: .claude, command: .status,
+            executable: executable, proxyURL: configuration,
+            workdir: CLIProviderConfigStore.statusWorkdir, codexHome: nil, codexFullAccess: false
+        ))
+        return CLIUsageParser.parseClaude(
+            quotaTranscript.text,
+            timedOut: quotaTranscript.timedOut,
+            loginMethodText: loginTranscript.text
+        )
     }
 
     static func fetchCodex(profile: CodexCLIProfile, workdir: String) async -> AppUsage {
@@ -83,7 +102,9 @@ enum UsageFetcher {
 }
 
 enum CLIUsageParser {
-    static func parseClaude(_ text: String, timedOut: Bool) -> AppUsage {
+    static func parseClaude(
+        _ text: String, timedOut: Bool, loginMethodText: String? = nil
+    ) -> AppUsage {
         // The rendered TUI uses box/block glyphs for separators and progress
         // bars. Normalize them to whitespace before matching its labels.
         let screen = text.replacingOccurrences(
@@ -98,8 +119,11 @@ enum CLIUsageParser {
             pattern: #"(?is)Current\s+week\s*\(all\s+models\).*?(\d{1,3})%\s*used.*?Resets\s*([^\r\n]+)"#
         )
         let modelWeeks = modelWeekReadings(in: screen)
-        let plan = claudePlan(in: text)
-        if isUnauthenticated(text) { return UsageFetcher.unauthenticatedUsage() }
+        let identityText = loginMethodText ?? text
+        let plan = claudePlan(in: identityText) ?? claudePlan(in: text)
+        if isUnauthenticated(identityText) || isUnauthenticated(text) {
+            return UsageFetcher.unauthenticatedUsage()
+        }
         if let plan, isNonSubscriptionPlan(plan) {
             return UsageFetcher.noSubscriptionUsage(plan: plan)
         }

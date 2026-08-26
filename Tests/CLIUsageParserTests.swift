@@ -62,6 +62,13 @@ struct CLIUsageParserTests {
         expect(claudeLoginMethod.fiveHour.percentInt == 8, "Claude Status tab keeps session quota")
         expect(claudeLoginMethod.weekly.percentInt == 35, "Claude Status tab keeps weekly quota")
 
+        let claudeSeparateScreens = CLIUsageParser.parseClaude("""
+        Current session 8% used Resets 1:40pm
+        Current week (all models) 35% used Resets Aug 31 at 12pm
+        """, timedOut: false, loginMethodText: "Login method: Claude Max account")
+        expect(claudeSeparateScreens.fiveHour.percentInt == 8, "Claude usage screen remains the quota source")
+        expect(claudeSeparateScreens.plan == "max", "Claude status screen remains the login-method source")
+
         let claudeDetailedLogin = CLIUsageParser.parseClaude("""
         Login method: Claude Max account (Max 20x)
         Current session 8% used Resets 1:40pm

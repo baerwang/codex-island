@@ -76,7 +76,7 @@ History — read before re-stepping on these rakes:
 
 - `Sources/Window/IslandWindowController.swift` — borderless overlay window. Listens to `NSApplication.didChangeScreenParametersNotification` to reposition on display changes; prefers the screen with `safeAreaInsets.top > 0` (the notched display).
 - `Sources/App.swift` — launches the overlay and local stores; runtime Sparkle checks stay disabled.
-- `Sources/Usage/CLIStatusProbe.swift` — bounded PTY sessions. Claude and Codex each receive only `/status`; the probe never sends a prompt or reads credentials.
+- `Sources/Usage/CLIStatusProbe.swift` — bounded PTY sessions. Claude `/usage` supplies quota windows and its separate `/status` session supplies `Login method`; Codex uses `/status`. The probe never sends a prompt or reads credentials.
 - `Sources/Usage/UsageFetcher.swift` — validates launch context and parses status text. It never reads `auth.json`, Keychain entries, OAuth tokens, or provider HTTP endpoints.
 - `Sources/Usage/AppUsage.swift` — retains parsed plan/login state and independent quota windows. API, third-party, and signed-out states clear old subscription readings immediately.
 

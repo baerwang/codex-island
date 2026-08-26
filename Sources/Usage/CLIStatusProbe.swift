@@ -1,19 +1,41 @@
 import Darwin
 import Foundation
 
-/// Native pseudo-terminal runner for status-only Claude Code / Codex sessions.
+/// Native pseudo-terminal runner for Claude Code / Codex status-screen sessions.
 /// A normal pipe is not a terminal and both CLIs keep slash commands behind
 /// their TUI. Codex also needs a response to its cursor-position query.
 enum CLIStatusProbe {
     enum Provider { case claude, codex }
+    enum Command { case status, usage }
 
     struct Request {
         let provider: Provider
+        /// Claude uses two independent screens: `/usage` for quota windows
+        /// and `/status` for Login method. Codex only uses `/status`.
+        let command: Command
         let executable: String
         let proxyURL: String
         let workdir: String
         let codexHome: String?
         let codexFullAccess: Bool
+
+        init(
+            provider: Provider,
+            command: Command = .status,
+            executable: String,
+            proxyURL: String,
+            workdir: String,
+            codexHome: String?,
+            codexFullAccess: Bool
+        ) {
+            self.provider = provider
+            self.command = command
+            self.executable = executable
+            self.proxyURL = proxyURL
+            self.workdir = workdir
+            self.codexHome = codexHome
+            self.codexFullAccess = codexFullAccess
+        }
     }
 
     struct Transcript {
@@ -50,9 +72,8 @@ enum CLIStatusProbe {
         let started = Date()
         var commandsSent = 0
         // Codex must finish drawing before its prompt marker can be trusted.
-        // Claude's Status tab itself contains the login method and current
-        // subscription windows. Keep it to one `/status` command instead of
-        // navigating from Status to Usage, which varies across CLI releases.
+        // Claude quota and login method live on separate screens, so they are
+        // deliberately probed in independent PTY sessions by UsageFetcher.
         var nextCommandAt = started.addingTimeInterval(request.provider == .codex ? 8 : 3)
         var lastOutputAt = started
         var sawPrompt = false
@@ -100,7 +121,9 @@ enum CLIStatusProbe {
                now >= nextCommandAt,
                now.timeIntervalSince(lastOutputAt) >= 0.25 {
                 switch request.provider {
-                case .claude: write(master, Data("/status\r".utf8))
+                case .claude:
+                    let command = request.command == .usage ? "/usage\r" : "/status\r"
+                    write(master, Data(command.utf8))
                 // Codex's composer accepts the slash command on the first
                 // return and renders the status view on the confirmation
                 // return. A single return has repeatedly left this TUI on the

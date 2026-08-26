@@ -133,9 +133,9 @@ the CLI first, then configure the required Claude proxy and any optional
 Codex proxy:
 
 - **Claude:** enter a valid HTTP(S) proxy in Settings. The app launches
-  `claude`, sends `/status`, and parses the CLI-reported login method plus its
-  Current session, all-model weekly, and model-specific weekly windows. An
-  empty proxy disables the request.
+  `claude` in two independent PTY sessions: `/usage` supplies Current session,
+  all-model weekly, and model-specific weekly windows; `/status` supplies the
+  CLI-reported login method. An empty proxy disables both requests.
 - **Codex:** add every account explicitly in Settings; each profile needs a
   display name and `CODEX_HOME`, plus an optional HTTP(S) proxy. When blank,
   CodexIsland clears inherited proxy variables so that profile runs directly.

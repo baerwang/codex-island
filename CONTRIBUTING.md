@@ -14,7 +14,7 @@ Open an issue. Useful things to include:
   credentials.
 
 If Claude or Codex changes its interactive status screen, attach a redacted
-PTY transcript from `claude /status` or `codex /status`. Do not capture or
+PTY transcript from `claude /usage`, `claude /status`, or `codex /status`. Do not capture or
 share OAuth tokens, API keys, `auth.json`, Keychain data, or provider HTTP
 responses: the app deliberately never reads or calls those sources.
 
