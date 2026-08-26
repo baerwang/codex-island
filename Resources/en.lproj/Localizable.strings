@@ -160,6 +160,9 @@
 "Remaining" = "Remaining";
 "Show usage as used or remaining quota." = "Show usage as used or remaining quota.";
 "Usage display" = "Usage display";
+"Applies to every percentage; 5h compact view shows reset time." = "Applies to every percentage; 5h compact view shows reset time.";
+"Collapse profiles" = "Collapse profiles";
+"Show %d more profiles" = "Show %d more profiles";
 "Compact quota" = "Compact quota";
 "Compact quota window" = "Compact quota window";
 "Claude window" = "Claude window";

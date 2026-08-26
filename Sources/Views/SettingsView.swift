@@ -27,6 +27,7 @@ struct SettingsView: View {
 
     @AppStorage("Settings.activeTab") private var activeTabRaw: String = SettingsTab.general.rawValue
     @State private var cliRefreshTask: Task<Void, Never>?
+    @State private var showsAllCodexProfiles = false
 
     private var activeTab: SettingsTab {
         get { SettingsTab(rawValue: activeTabRaw) ?? .general }
@@ -552,13 +553,36 @@ struct SettingsView: View {
                     .padding(.vertical, 8)
             }
 
-            ForEach($cliConfig.codexProfiles) { $profile in
-                codexProfileEditor($profile)
+            ForEach(cliConfig.codexProfiles.indices, id: \.self) { index in
+                if showsAllCodexProfiles || index == cliConfig.codexProfiles.startIndex {
+                    codexProfileEditor($cliConfig.codexProfiles[index])
+                }
+            }
+
+            if cliConfig.codexProfiles.count > 1 {
+                Button {
+                    withAnimation(.strongEaseOut) {
+                        showsAllCodexProfiles.toggle()
+                    }
+                } label: {
+                    Text(
+                        showsAllCodexProfiles
+                            ? L10n.tr("Collapse profiles")
+                            : L10n.tr("Show %d more profiles", cliConfig.codexProfiles.count - 1)
+                    )
+                    .font(Typography.caption)
+                    .foregroundStyle(.white.opacity(0.52))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 10)
             }
 
             HStack {
                 Spacer()
-                PillButton(label: "Add Codex") { cliConfig.addCodexProfile() }
+                PillButton(label: "Add Codex") {
+                    cliConfig.addCodexProfile()
+                    withAnimation(.strongEaseOut) { showsAllCodexProfiles = true }
+                }
             }
             .padding(.horizontal, 10)
             .padding(.top, 2)
@@ -783,7 +807,7 @@ struct SettingsView: View {
             sectionLabel("Usage display")
             SettingsRow(
                 title: "Percentages",
-                subtitle: "Show usage as used or remaining quota."
+                subtitle: "Applies to every percentage; 5h compact view shows reset time."
             ) {
                 usageDisplaySegmented
             }

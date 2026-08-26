@@ -40,6 +40,8 @@ struct UsageMergeTests {
         expect(!AppUsage.empty.fiveHour.hasReading, "cold-start .empty has no reading")
         expect(reading(0).hasReading, "a genuine 0% reading is a reading")
         expect(reading(0.42).hasReading, "an ordinary reading is a reading")
+        expect(reading(0.42).displayedPercentInt(mode: .used) == 42, "used display keeps every window's used percentage")
+        expect(reading(0.42).displayedPercentInt(mode: .remaining) == 58, "remaining display complements every window's percentage")
         // Carry-forward shape: real value + fresh error. Must still count.
         expect(
             WindowUsage(usedPercent: 0.42, resetAt: nil, error: "rate limited").hasReading,

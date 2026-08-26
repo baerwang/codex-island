@@ -160,6 +160,9 @@
 "Remaining" = "剩余";
 "Show usage as used or remaining quota." = "将用量百分比显示为已用或剩余额度。";
 "Usage display" = "用量显示";
+"Applies to every percentage; 5h compact view shows reset time." = "适用于所有百分比；紧凑 5 小时显示距重置时间。";
+"Collapse profiles" = "收起其他配置";
+"Show %d more profiles" = "展开其余 %d 个配置";
 "Compact quota" = "紧凑额度显示";
 "Compact quota window" = "紧凑额度窗口";
 "Claude window" = "Claude 窗口";
