@@ -7,10 +7,20 @@ struct ProjectUsageList: View {
     private enum ProviderChoice: String, CaseIterable { case claude, codex }
 
     @ObservedObject private var cost = CostStore.shared
+    @ObservedObject private var config = CLIProviderConfigStore.shared
     @State private var choice: ProviderChoice = .claude
+    /// nil deliberately means every configured Codex profile. Selecting a
+    /// profile narrows rows by the source UUID attached during local-log scan.
+    @State private var codexProfileID: UUID?
+
+    private var activeCodexProfiles: [CodexCLIProfile] {
+        config.activeCodexProfiles
+    }
 
     private var rows: [ProjectUsageRow] {
-        choice == .claude ? cost.claude.projects : cost.codex.projects
+        guard choice == .codex else { return cost.claude.projects }
+        guard let codexProfileID else { return cost.codex.projects }
+        return cost.codex.projects.filter { $0.sourceID == codexProfileID.uuidString }
     }
 
     var body: some View {
@@ -29,6 +39,30 @@ struct ProjectUsageList: View {
                 .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(width: 132)
+            }
+
+            if choice == .codex, !activeCodexProfiles.isEmpty {
+                HStack(spacing: 8) {
+                    Text(L10n.tr("Codex profile"))
+                        .font(Typography.caption)
+                        .foregroundStyle(.white.opacity(0.45))
+                    Picker("", selection: $codexProfileID) {
+                        Text(L10n.tr("All")).tag(UUID?.none)
+                        ForEach(activeCodexProfiles) { profile in
+                            Text(profile.name).tag(Optional(profile.id))
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 190, alignment: .leading)
+                    .accessibilityLabel(L10n.tr("Codex profile"))
+                }
+                .onChange(of: config.codexProfiles) { _ in
+                    if let codexProfileID,
+                       !activeCodexProfiles.contains(where: { $0.id == codexProfileID }) {
+                        self.codexProfileID = nil
+                    }
+                }
             }
 
             Text(L10n.tr("Local log estimate · today / month to date"))

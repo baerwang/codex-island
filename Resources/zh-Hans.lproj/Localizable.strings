@@ -167,6 +167,7 @@
 "Compact quota window" = "紧凑额度窗口";
 "Claude window" = "Claude 窗口";
 "Codex window" = "Codex 窗口";
+"Codex profile" = "Codex 配置";
 "5h shows reset time; weekly shows percentage." = "5 小时显示距重置时间；周额度显示百分比。";
 "Weekly" = "周额度";
 "5 hours" = "5 小时";
