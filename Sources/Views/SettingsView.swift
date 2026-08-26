@@ -25,6 +25,7 @@ struct SettingsView: View {
     @ObservedObject private var cliConfig = CLIProviderConfigStore.shared
 
     @AppStorage("Settings.activeTab") private var activeTabRaw: String = SettingsTab.general.rawValue
+    @State private var cliRefreshTask: Task<Void, Never>?
 
     private var activeTab: SettingsTab {
         get { SettingsTab(rawValue: activeTabRaw) ?? .general }
@@ -543,6 +544,21 @@ struct SettingsView: View {
         .padding(.horizontal, 14)
         .padding(.top, 14)
         .padding(.bottom, 10)
+        .onChange(of: cliConfig.claudeProxyURL) { _ in queueCLIStatusRefresh() }
+        .onChange(of: cliConfig.codexProfiles) { _ in queueCLIStatusRefresh() }
+        .onDisappear { cliRefreshTask?.cancel() }
+    }
+
+    /// A field changes several times while the user types a URL/path. Wait
+    /// until it settles before one status-only refresh; malformed partial
+    /// proxies are rejected by `UsageFetcher` and never launch a CLI.
+    private func queueCLIStatusRefresh() {
+        cliRefreshTask?.cancel()
+        cliRefreshTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled else { return }
+            usage.refresh()
+        }
     }
 
     private func codexProfileEditor(_ profile: Binding<CodexCLIProfile>) -> some View {

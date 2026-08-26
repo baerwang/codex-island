@@ -60,7 +60,7 @@ enum UsageFetcher {
 
     private static func isProxy(_ raw: String) -> Bool {
         guard let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
-        return url.scheme == "http" || url.scheme == "https"
+        return (url.scheme == "http" || url.scheme == "https") && url.host != nil
     }
 
     private static func isDirectory(_ path: String) -> Bool {
