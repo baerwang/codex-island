@@ -134,6 +134,7 @@ struct ChartTile: View {
     let windowKind: UsageWindow
     @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
     @ObservedObject private var historyStore = UsageHistoryStore.shared
+    @ObservedObject private var usageStore = UsageStore.shared
 
     /// Locked tile height across all 5 styles so the panel size is
     /// identical regardless of what the user picks.
@@ -185,7 +186,8 @@ struct ChartTile: View {
     /// same transform `value` uses, so the history and the live point agree.
     private func historyPoints() -> [Double] {
         let mode = usageDisplay.mode
-        return historyStore.samples(provider: provider, window: windowKind).map { sample in
+        let sourceID = provider == .codex ? usageStore.codexHeadlineProfileID?.uuidString : nil
+        return historyStore.samples(provider: provider, window: windowKind, sourceID: sourceID).map { sample in
             WindowUsage(usedPercent: sample.used, resetAt: nil, error: nil)
                 .displayedFraction(mode: mode) * 100
         }

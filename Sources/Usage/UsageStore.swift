@@ -109,7 +109,10 @@ final class UsageStore: ObservableObject {
             if let headline = CodexHeadlineSelection.select(
                 profiles: profiles, readings: nextProfiles, preferredID: preferredCodexProfileID
             ) {
-                UsageHistoryStore.shared.record(provider: .codex, usage: headline.usage, at: now)
+                UsageHistoryStore.shared.record(
+                    provider: .codex, usage: headline.usage, at: now,
+                    sourceID: headline.id.uuidString
+                )
             }
             lastUpdated = now
             finishRefresh(id: refreshID)

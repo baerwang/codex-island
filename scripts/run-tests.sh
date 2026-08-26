@@ -29,6 +29,27 @@ swiftc \
 
 swiftc \
   -parse-as-library \
+  -o "$OUT_DIR/alert-decision-tests" \
+  Sources/Model/PreferenceStorage.swift \
+  Sources/Model/AppEnvironment.swift \
+  Sources/Model/RefreshIntervalStore.swift \
+  Sources/Model/ProviderVisibilityStore.swift \
+  Sources/Model/AlertThresholdStore.swift \
+  Sources/Model/UsageDisplayModeStore.swift \
+  Sources/Model/CLIProviderConfig.swift \
+  Sources/Usage/AppUsage.swift \
+  Sources/Usage/CLIStatusProbe.swift \
+  Sources/Usage/UsageFetcher.swift \
+  Sources/Usage/CodexHeadlineSelection.swift \
+  Sources/Usage/UsageHistory.swift \
+  Sources/Usage/UsageStore.swift \
+  Sources/Model/AlertEngine.swift \
+  Tests/AlertDecisionTests.swift
+
+"$OUT_DIR/alert-decision-tests"
+
+swiftc \
+  -parse-as-library \
   -o "$OUT_DIR/compact-quota-selection-tests" \
   Sources/Model/UsageDisplayModeStore.swift \
   Sources/Usage/AppUsage.swift \
