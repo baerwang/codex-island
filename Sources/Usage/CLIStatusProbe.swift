@@ -53,6 +53,7 @@ enum CLIStatusProbe {
         var timedOut = false
         var childExited = false
         var cursorQueryTail = Data()
+        var acceptedStatusWorkspaceTrust = false
         let maximumAttempts = request.provider == .codex ? 3 : 1
         let timeout = request.provider == .codex ? 28.0 : 32.0
 
@@ -71,6 +72,17 @@ enum CLIStatusProbe {
                 }
                 if request.provider == .codex {
                     sawPrompt = sawPrompt || bytes.range(of: Data("›".utf8)) != nil
+                    // The fixed status workspace can show Codex's trust
+                    // picker on its first use. It is not a user project and
+                    // this probe never submits a task, so accept the picker
+                    // (whose default button is Yes) rather than leaving a
+                    // background status refresh stuck behind it.
+                    let recent = String(decoding: raw.suffix(4_096), as: UTF8.self).lowercased()
+                    if !acceptedStatusWorkspaceTrust,
+                       (recent.contains("trust this folder") || recent.contains("trust this directory")) {
+                        write(master, Data("\r".utf8))
+                        acceptedStatusWorkspaceTrust = true
+                    }
                 }
             }
 
