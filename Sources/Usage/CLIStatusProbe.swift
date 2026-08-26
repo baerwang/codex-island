@@ -8,6 +8,12 @@ enum CLIStatusProbe {
     enum Provider { case claude, codex }
     enum Command { case status, usage }
 
+    private static let activeProcessLock = NSLock()
+    /// Process-group leaders created by this app's own PTY probes. This is
+    /// deliberately separate from all user terminals, so shutdown cleanup
+    /// can never touch an interactive Claude/Codex session the user started.
+    private nonisolated(unsafe) static var activeProcessGroups = Set<Int32>()
+
     struct Request {
         let provider: Provider
         /// Claude uses two independent screens: `/usage` for quota windows
@@ -67,6 +73,9 @@ enum CLIStatusProbe {
             return Transcript(text: "pty unavailable", raw: Data(), timedOut: false)
         }
         if pid == 0 { launchChild(launch) }
+
+        registerActiveProcessGroup(pid)
+        defer { unregisterActiveProcessGroup(pid) }
 
         _ = fcntl(master, F_SETFL, O_NONBLOCK)
         let started = Date()
@@ -148,12 +157,12 @@ enum CLIStatusProbe {
                let captureUntil,
                now >= captureUntil,
                now.timeIntervalSince(lastOutputAt) >= 1 {
-                terminateAndReap(pid)
+                terminateAndReap(pid, master: master)
                 break
             }
             if now.timeIntervalSince(started) >= timeout {
                 timedOut = true
-                terminateAndReap(pid)
+                terminateAndReap(pid, master: master)
                 break
             }
             usleep(50_000)
@@ -206,11 +215,32 @@ enum CLIStatusProbe {
         }
     }
 
+    /// Called when the app stops its refresh lifecycle. SIGKILL is warranted
+    /// here because every registered process is a status-only child of this
+    /// app; leaving it behind would keep a proxy/account session alive after
+    /// the app has gone away.
+    static func terminateAllActiveProbes() {
+        activeProcessLock.lock()
+        let groups = activeProcessGroups
+        activeProcessLock.unlock()
+        for pid in groups {
+            kill(-pid, SIGKILL)
+            kill(pid, SIGKILL)
+        }
+    }
+
     /// Reap the direct PTY child after escalating its process group. Without
     /// the final blocking wait, a timed-out polling cycle can leave a zombie
     /// until the app next handles SIGCHLD.
-    private static func terminateAndReap(_ pid: Int32) {
+    private static func terminateAndReap(_ pid: Int32, master: Int32) {
         var status: Int32 = 0
+        // The terminal interrupt is what an interactive user would send. It
+        // lets both CLIs close their TUI cleanly before signal escalation.
+        if master >= 0 {
+            write(master, Data([0x03]))
+            usleep(400_000)
+            if waitpid(pid, &status, WNOHANG) == pid { return }
+        }
         for signal in [SIGINT, SIGTERM] {
             kill(-pid, signal)
             usleep(400_000)
@@ -219,6 +249,18 @@ enum CLIStatusProbe {
         kill(-pid, SIGKILL)
         kill(pid, SIGKILL) // Fallback if a terminal implementation changed pgrp.
         _ = waitpid(pid, &status, 0)
+    }
+
+    private static func registerActiveProcessGroup(_ pid: Int32) {
+        activeProcessLock.lock()
+        activeProcessGroups.insert(pid)
+        activeProcessLock.unlock()
+    }
+
+    private static func unregisterActiveProcessGroup(_ pid: Int32) {
+        activeProcessLock.lock()
+        activeProcessGroups.remove(pid)
+        activeProcessLock.unlock()
     }
 
     private struct ChildLaunch {

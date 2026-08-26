@@ -176,6 +176,7 @@ final class UsageStore: ObservableObject {
         refreshPending = false
         refreshTask?.cancel()
         refreshTask = nil
+        CLIStatusProbe.terminateAllActiveProbes()
         activeRefreshID = nil
         loading = false
     }
