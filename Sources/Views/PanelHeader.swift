@@ -70,16 +70,28 @@ struct PanelHeader: View {
                 $0.id == usageStore.codexHeadlineProfileID
             } ?? 0
             let selectedName = profiles[selectedIndex].name
-            Button {
-                usageStore.selectNextCodexProfile(in: profiles)
+            Menu {
+                ForEach(profiles) { profile in
+                    Button {
+                        usageStore.selectCodexProfile(id: profile.id)
+                    } label: {
+                        HStack {
+                            Text(profile.name)
+                            if profile.id == usageStore.codexHeadlineProfileID {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
             } label: {
                 profilePickerLabel(
                     position: "\(selectedIndex + 1)/\(profiles.count)",
                     name: selectedName
                 )
             }
-            .buttonStyle(.plain)
-            .help("Current: \(selectedName). Click to switch Codex profile")
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Current: \(selectedName). Select Codex profile")
             .accessibilityLabel(
                 "Codex profile \(selectedName), \(selectedIndex + 1) of \(profiles.count). Next profile"
             )
@@ -95,16 +107,39 @@ struct PanelHeader: View {
             }
             let selectedName = selectedIndex.map { profiles[$0].name }
                 ?? L10n.tr("All")
-            Button {
-                costProfile.advance(in: profiles)
+            Menu {
+                Button {
+                    costProfile.select(nil, in: profiles)
+                } label: {
+                    HStack {
+                        Text(L10n.tr("All"))
+                        if costProfile.selectedProfileID == nil {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+                Divider()
+                ForEach(profiles) { profile in
+                    Button {
+                        costProfile.select(profile.id, in: profiles)
+                    } label: {
+                        HStack {
+                            Text(profile.name)
+                            if profile.id == costProfile.selectedProfileID {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
             } label: {
                 profilePickerLabel(
                     position: selectedIndex.map { "\($0 + 1)/\(profiles.count)" },
                     name: selectedName
                 )
             }
-            .buttonStyle(.plain)
-            .help("Current local usage: \(selectedName). Click to switch Codex profile")
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Current local usage: \(selectedName). Select Codex profile")
             .accessibilityLabel("Codex local usage profile: \(selectedName)")
         }
     }

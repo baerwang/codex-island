@@ -23,21 +23,6 @@ struct CodexProfileConfigTests {
         api.quotaMode = .api
         expect(api.effectiveQuotaMode == .api, "explicit API mode is retained")
 
-        let profileA = UUID()
-        let profileB = UUID()
-        expect(
-            CodexCostProfileCycle.next(current: nil, profileIDs: [profileA, profileB]) == profileA,
-            "local usage filter cycles from All to first profile"
-        )
-        expect(
-            CodexCostProfileCycle.next(current: profileA, profileIDs: [profileA, profileB]) == profileB,
-            "local usage filter cycles through profiles"
-        )
-        expect(
-            CodexCostProfileCycle.next(current: profileB, profileIDs: [profileA, profileB]) == nil,
-            "local usage filter cycles back to All"
-        )
-
         print(failures == 0 ? "ALL PASS" : "\(failures) FAILURE(S)")
         exit(failures == 0 ? 0 : 1)
     }

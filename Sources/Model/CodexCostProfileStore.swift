@@ -14,10 +14,14 @@ final class CodexCostProfileStore: ObservableObject {
         selectedProfileID = nil
     }
 
-    func advance(in profiles: [CodexCLIProfile]) {
-        selectedProfileID = CodexCostProfileCycle.next(
-            current: selectedProfileID, profileIDs: profiles.map(\.id)
-        )
+    func select(_ profileID: UUID?, in profiles: [CodexCLIProfile]) {
+        guard let profileID else {
+            selectedProfileID = nil
+            return
+        }
+        selectedProfileID = profiles.contains(where: { $0.id == profileID })
+            ? profileID
+            : nil
     }
 
     func normalize(in profiles: [CodexCLIProfile]) {
@@ -25,17 +29,5 @@ final class CodexCostProfileStore: ObservableObject {
               !profiles.contains(where: { $0.id == selectedProfileID })
         else { return }
         self.selectedProfileID = nil
-    }
-}
-
-enum CodexCostProfileCycle {
-    /// Cycle All → profile 1 → … → profile N → All.
-    static func next(current: UUID?, profileIDs: [UUID]) -> UUID? {
-        guard !profileIDs.isEmpty else { return nil }
-        guard let current,
-              let index = profileIDs.firstIndex(of: current)
-        else { return profileIDs[0] }
-        let nextIndex = index + 1
-        return nextIndex < profileIDs.count ? profileIDs[nextIndex] : nil
     }
 }
