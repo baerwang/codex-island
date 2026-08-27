@@ -8,6 +8,16 @@ import Foundation
 /// it off the main actor without touching `@MainActor` state. `now` is
 /// injectable so the window boundaries are testable.
 enum CostSummary {
+    private struct SourceDayKey: Hashable {
+        let sourceID: String
+        let dayOffset: Int
+    }
+
+    private struct DailyTokenAccumulator {
+        var tokens = 0
+        var billableTokens = 0
+    }
+
     private struct ProjectAccumulator {
         var name: String
         var sourceID: String?
@@ -45,8 +55,7 @@ enum CostSummary {
         var monthDollars = 0.0, monthTokens = 0, monthBillable = 0
         var hourlyBuckets = Array(repeating: 0.0, count: currentHour + 1)
         var dailyBuckets = Array(repeating: 0.0, count: currentDay + 1)
-        var historyTokensBySource: [String: [Int]] = [:]
-        var historyBillableBySource: [String: [Int]] = [:]
+        var historyBySourceDay: [SourceDayKey: DailyTokenAccumulator] = [:]
         // Filtered to non-zero token events so handshake/stub rows don't
         // show up as "unpriced" warnings — the user only cares about
         // models that actually moved tokens.
@@ -98,15 +107,11 @@ enum CostSummary {
                 let eventDay = cal.startOfDay(for: event.timestamp)
                 let dayOffset = cal.dateComponents([.day], from: historyStart, to: eventDay).day ?? -1
                 if (0..<historyDays).contains(dayOffset) {
-                    let sourceKey = event.sourceID ?? ""
-                    var sourceTokens = historyTokensBySource[sourceKey]
-                        ?? Array(repeating: 0, count: historyDays)
-                    var sourceBillable = historyBillableBySource[sourceKey]
-                        ?? Array(repeating: 0, count: historyDays)
-                    sourceTokens[dayOffset] += tokens
-                    sourceBillable[dayOffset] += billable
-                    historyTokensBySource[sourceKey] = sourceTokens
-                    historyBillableBySource[sourceKey] = sourceBillable
+                    let key = SourceDayKey(
+                        sourceID: event.sourceID ?? "", dayOffset: dayOffset
+                    )
+                    historyBySourceDay[key, default: DailyTokenAccumulator()].tokens += tokens
+                    historyBySourceDay[key, default: DailyTokenAccumulator()].billableTokens += billable
                 }
             }
 
@@ -196,10 +201,9 @@ enum CostSummary {
             ),
             recentByModel: recentRows,
             weekByModel: weekRows,
-            dailyTokens: dailyTokenBucketsBySource(
+            dailyTokens: dailyTokenBucketsBySourceDay(
                 start: historyStart,
-                tokens: historyTokensBySource,
-                billableTokens: historyBillableBySource,
+                history: historyBySourceDay,
                 calendar: cal
             ),
             projects: projects.map { key, value in
@@ -236,26 +240,25 @@ enum CostSummary {
             .path
     }
 
-    private static func dailyTokenBucketsBySource(
+    private static func dailyTokenBucketsBySourceDay(
         start: Date,
-        tokens: [String: [Int]],
-        billableTokens: [String: [Int]],
+        history: [SourceDayKey: DailyTokenAccumulator],
         calendar: Calendar
     ) -> [DailyTokenBucket] {
-        tokens.keys.sorted().flatMap { sourceKey in
-            let sourceTokens = tokens[sourceKey] ?? []
-            let sourceBillable = billableTokens[sourceKey]
-                ?? Array(repeating: 0, count: sourceTokens.count)
-            return sourceTokens.indices.compactMap { index -> DailyTokenBucket? in
-                guard sourceTokens[index] > 0 || sourceBillable[index] > 0 else { return nil }
-                let day = calendar.date(byAdding: .day, value: index, to: start) ?? start
-                return DailyTokenBucket(
-                    dayStart: day,
-                    tokens: sourceTokens[index],
-                    billableTokens: sourceBillable[index],
-                    sourceID: sourceKey.isEmpty ? nil : sourceKey
-                )
-            }
+        history.keys.sorted {
+            if $0.sourceID != $1.sourceID { return $0.sourceID < $1.sourceID }
+            return $0.dayOffset < $1.dayOffset
+        }.compactMap { key in
+            guard let accumulated = history[key],
+                  accumulated.tokens > 0 || accumulated.billableTokens > 0
+            else { return nil }
+            let day = calendar.date(byAdding: .day, value: key.dayOffset, to: start) ?? start
+            return DailyTokenBucket(
+                dayStart: day,
+                tokens: accumulated.tokens,
+                billableTokens: accumulated.billableTokens,
+                sourceID: key.sourceID.isEmpty ? nil : key.sourceID
+            )
         }
     }
 

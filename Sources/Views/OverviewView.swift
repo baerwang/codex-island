@@ -10,13 +10,14 @@ struct OverviewView: View {
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
     @ObservedObject private var usageStore = UsageStore.shared
     @ObservedObject private var cliConfig = CLIProviderConfigStore.shared
+    @ObservedObject private var tokenMode = TokenCountModeStore.shared
     @State private var selectedDate: Date?
 
     private var days: [OverviewDay] {
         Self.joinDays(
             claudeBuckets: visibility.claudeVisible ? costStore.claude.dailyTokens : [],
             codexBuckets: visibleCodexBuckets,
-            mode: .all
+            mode: tokenMode.mode
         )
     }
 
@@ -168,8 +169,11 @@ struct OverviewView: View {
     private var summarySubline: String {
         guard let selectedDay else {
             let active = L10n.tr("%d Active Days", activeDays)
-            guard let selectedCodexProfileName else { return active }
-            return L10n.tr("%@ · Codex %@", active, selectedCodexProfileName)
+            var parts = [active, tokenMode.mode.label]
+            if let selectedCodexProfileName {
+                parts.append("Codex \(selectedCodexProfileName)")
+            }
+            return parts.joined(separator: " · ")
         }
         switch selectedDay.dominantProvider {
         case .none:   return L10n.tr("No Activity")

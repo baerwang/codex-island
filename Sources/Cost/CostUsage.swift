@@ -62,9 +62,8 @@ struct ModelUsageRow {
 }
 
 /// Calendar-local daily token total used by the overview contribution grid.
-/// Stores both wire-level and billable totals so future views can choose the
-/// metric without re-scanning session logs. The overview intentionally uses
-/// wire-level volume.
+/// Stores both wire-level and billable totals so the overview can follow the
+/// user's global Token count mode without re-scanning session logs.
 struct DailyTokenBucket: Codable {
     let dayStart: Date
     let tokens: Int

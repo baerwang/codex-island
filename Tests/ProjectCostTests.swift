@@ -41,8 +41,12 @@ struct ProjectCostTests {
         let workHistory = summary.dailyTokens
             .filter { $0.sourceID == "work-home" }
             .reduce(0) { $0 + $1.tokens }
+        let personalBillableHistory = summary.dailyTokens
+            .filter { $0.sourceID == "personal-home" }
+            .reduce(0) { $0 + $1.billableTokens }
         expect(personalHistory == 350, "daily history retains personal Codex profile attribution")
         expect(workHistory == 3_100, "daily history retains work Codex profile attribution")
+        expect(personalBillableHistory == 300, "daily history retains billable token mode by profile")
 
         let canonicalized = CostSummary.summarize(events: [
             TokenEvent(
