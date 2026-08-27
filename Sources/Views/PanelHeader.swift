@@ -93,7 +93,7 @@ struct PanelHeader: View {
             .fixedSize()
             .help("Current: \(selectedName). Select Codex profile")
             .accessibilityLabel(
-                "Codex profile \(selectedName), \(selectedIndex + 1) of \(profiles.count). Next profile"
+                "Codex profile \(selectedName), \(selectedIndex + 1) of \(profiles.count). Select profile"
             )
         }
     }
@@ -155,11 +155,10 @@ struct PanelHeader: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: 76, alignment: .leading)
-            Image(systemName: "chevron.down")
-                .font(.system(size: 9, weight: .semibold))
         }
         .font(Typography.micro)
         .foregroundStyle(.white.opacity(0.52))
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder

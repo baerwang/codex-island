@@ -9,6 +9,7 @@ struct CodexProfileConfigTests {
         else { print("FAIL \(label)"); failures += 1 }
     }
 
+    @MainActor
     static func main() {
         let id = UUID()
         let legacy = """
@@ -22,6 +23,16 @@ struct CodexProfileConfigTests {
         var api = CodexCLIProfile(name: "API", codexHome: "/tmp/api")
         api.quotaMode = .api
         expect(api.effectiveQuotaMode == .api, "explicit API mode is retained")
+
+        let profileA = CodexCLIProfile(id: UUID(), name: "A", codexHome: "/tmp/a")
+        let profileB = CodexCLIProfile(id: UUID(), name: "B", codexHome: "/tmp/b")
+        let selector = CodexCostProfileStore.shared
+        selector.select(profileA.id, in: [profileA, profileB])
+        expect(selector.selectedProfileID == profileA.id, "menu selection chooses the exact profile")
+        selector.select(nil, in: [profileA, profileB])
+        expect(selector.selectedProfileID == nil, "menu selection returns explicitly to All")
+        selector.select(UUID(), in: [profileA, profileB])
+        expect(selector.selectedProfileID == nil, "unknown profile cannot create a stale selection")
 
         print(failures == 0 ? "ALL PASS" : "\(failures) FAILURE(S)")
         exit(failures == 0 ? 0 : 1)
