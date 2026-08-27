@@ -37,7 +37,10 @@ struct CodexHeadlineSelectionTests {
             ],
             preferredID: api.id
         )
-        expect(explicitAPI?.id == api.id, "explicit profile choice is preserved")
+        expect(
+            explicitAPI?.id == subscription.id,
+            "API quota preference cannot hide an available subscription profile"
+        )
 
         let unavailable = CodexCLIProfile(name: "Unavailable", codexHome: "/missing")
         let fallback = CodexHeadlineSelection.select(
@@ -47,7 +50,18 @@ struct CodexHeadlineSelectionTests {
                 api.id: usage(0, plan: "api", error: "API mode — no subscription quota"),
             ]
         )
-        expect(fallback?.id == api.id, "API profile wins when no subscription profile is usable")
+        expect(
+            fallback?.id == unavailable.id,
+            "subscription failure stays visible ahead of API-only profile"
+        )
+
+        let allAPI = CodexHeadlineSelection.select(
+            profiles: [api],
+            readings: [
+                api.id: usage(0, plan: "api", error: "API mode — no subscription quota"),
+            ]
+        )
+        expect(allAPI?.id == api.id, "API profile remains selectable when every profile is API")
 
         print(failures == 0 ? "ALL PASS" : "\(failures) FAILURE(S)")
         exit(failures == 0 ? 0 : 1)

@@ -102,6 +102,14 @@ struct AppUsage {
 
     static let empty = AppUsage(fiveHour: .unknown, weekly: .unknown)
 
+    /// Only an explicit CLI-reported API/custom login lacks subscription
+    /// quota by design. Timeout, parse failure, signed-out and cold-start
+    /// states must keep their provider surface visible so the error is not
+    /// mistaken for an intentionally quota-less account.
+    var isNonSubscriptionMode: Bool {
+        plan == "api" || plan == "third-party"
+    }
+
     var peekWindow: WindowUsage { fiveHour.hasReading ? fiveHour : weekly }
 
     /// Which window `peekWindow` selected — the peek chrome (VoiceOver label,

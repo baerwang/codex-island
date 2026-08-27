@@ -167,12 +167,15 @@ struct PanelFooter: View {
         guard screenPref.screen == .usage else { return nil }
         var visibleUsages: [AppUsage] = []
         if visibility.claudeVisible { visibleUsages.append(usageStore.claude) }
-        if visibility.codexVisible { visibleUsages.append(usageStore.codexHeadlineUsage) }
+        if visibility.codexVisible && usageStore.codexQuotaSurfaceVisible {
+            visibleUsages.append(usageStore.codexHeadlineUsage)
+        }
         guard !visibleUsages.isEmpty else { return nil }
-        guard !visibleUsages.contains(where: {
-            $0.fiveHour.hasReading || $0.weekly.hasReading
-        }) else { return nil }
-        return visibleUsages.compactMap { $0.fiveHour.error ?? $0.weekly.error }.first
+        return visibleUsages.compactMap { usage in
+            [usage.fiveHour.error, usage.weekly.error]
+                .compactMap { $0 }
+                .first { $0 != WindowUsage.unknown.error }
+        }.first
     }
 
     @ViewBuilder

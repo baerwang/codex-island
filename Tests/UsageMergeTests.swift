@@ -38,6 +38,15 @@ struct UsageMergeTests {
         expect(!errored("rate limited").hasReading, "rate-limited window has no reading")
         expect(!WindowUsage.unknown.hasReading, "the `no data` sentinel has no reading")
         expect(!AppUsage.empty.fiveHour.hasReading, "cold-start .empty has no reading")
+        expect(!AppUsage.empty.isNonSubscriptionMode, "cold-start keeps provider surface visible")
+        expect(
+            pair(.unknown, .unknown, plan: "api").isNonSubscriptionMode,
+            "explicit API mode hides subscription quota surface"
+        )
+        expect(
+            !pair(errored("codex timeout"), errored("codex timeout")).isNonSubscriptionMode,
+            "Codex failure keeps subscription quota surface visible"
+        )
         expect(reading(0).hasReading, "a genuine 0% reading is a reading")
         expect(reading(0.42).hasReading, "an ordinary reading is a reading")
         expect(reading(0.42).displayedPercentInt(mode: .used) == 42, "used display keeps every window's used percentage")

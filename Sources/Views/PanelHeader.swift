@@ -19,7 +19,7 @@ struct PanelHeader: View {
         HStack(spacing: 0) {
             let claudeOn = visibility.claudeVisible
             let codexOn = visibility.codexVisible
-                && (screenPref.screen != .usage || usageStore.codexHasSubscriptionQuota)
+                && (screenPref.screen != .usage || usageStore.codexQuotaSurfaceVisible)
             providerTitle(name: "Claude", tag: usageStore.claude.plan?.uppercased(),
                           color: IslandColor.claude, alignment: .leading) {
                 EmptyView()
@@ -63,7 +63,7 @@ struct PanelHeader: View {
     private var quotaProfilePicker: some View {
         let profiles = config.activeCodexProfiles.filter {
             guard let usage = usageStore.codexByProfile[$0.id] else { return false }
-            return usage.fiveHour.hasReading || usage.weekly.hasReading
+            return !usage.isNonSubscriptionMode
         }
         if profiles.count > 1 {
             let selectedIndex = profiles.firstIndex {

@@ -19,7 +19,7 @@ struct UsageView: View {
 
     var body: some View {
         let claudeOn = visibility.claudeVisible
-        let codexOn = visibility.codexVisible && store.codexHasSubscriptionQuota
+        let codexOn = visibility.codexVisible && store.codexQuotaSurfaceVisible
 
         HStack(spacing: 0) {
             switch (claudeOn, codexOn) {
@@ -84,7 +84,7 @@ struct ProviderUsageBlock: View {
     let provider: AlertEngine.Provider
 
     private var hasNoSubscriptionQuota: Bool {
-        usage.plan == "api" || usage.plan == "third-party"
+        usage.isNonSubscriptionMode
     }
 
     private var title: String {

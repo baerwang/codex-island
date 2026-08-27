@@ -499,7 +499,7 @@ private struct LogoOverlay: View {
 
     private var isVisible: Bool {
         visibility.effectiveVisible(provider: provider)
-            && (provider != .codex || usageStore.codexHasSubscriptionQuota)
+            && (provider != .codex || usageStore.codexQuotaSurfaceVisible)
     }
 
     private var providerLabel: String {
@@ -557,7 +557,7 @@ private struct PeekPillOverlay: View {
 
     private var isVisible: Bool {
         visibility.effectiveVisible(provider: provider)
-            && (provider != .codex || usageStore.codexHasSubscriptionQuota)
+            && (provider != .codex || usageStore.codexQuotaSurfaceVisible)
     }
 
     private var currentWindow: WindowUsage {

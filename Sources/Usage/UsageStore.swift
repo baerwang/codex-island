@@ -30,8 +30,8 @@ final class UsageStore: ObservableObject {
             .flatMap(UUID.init(uuidString:))
     }
 
-    var codexHasSubscriptionQuota: Bool {
-        codexHeadlineUsage.fiveHour.hasReading || codexHeadlineUsage.weekly.hasReading
+    var codexQuotaSurfaceVisible: Bool {
+        !codexHeadlineUsage.isNonSubscriptionMode
     }
 
     /// Single source of truth for every quota surface. The selected profile

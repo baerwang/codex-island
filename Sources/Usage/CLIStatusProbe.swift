@@ -92,12 +92,12 @@ enum CLIStatusProbe {
         var captureUntil: Date?
         var cursorQueryTail = Data()
         var acceptedStatusWorkspaceTrust = false
-        // One interactive command per poll. Repeating `/status` inside the
-        // same background session increases account risk and can redraw a
-        // valid frame away; a failed poll retries only at the next configured
-        // refresh interval (or an explicit manual refresh).
-        let maximumAttempts = 1
-        let timeout = request.provider == .codex ? 23.0 : 32.0
+        var sawSettledCodexStatus = false
+        // Codex's prompt occasionally accepts the first command before its
+        // composer is ready. Retry in the SAME PTY at most three times, but
+        // stop immediately once a recognizable status frame appears.
+        let maximumAttempts = maximumCommandAttempts(for: request.provider)
+        let timeout = request.provider == .codex ? 28.0 : 32.0
 
         while !childExited {
             let now = Date()
@@ -125,11 +125,18 @@ enum CLIStatusProbe {
                         write(master, Data("\r".utf8))
                         acceptedStatusWorkspaceTrust = true
                     }
+                    if commandsSent > 0,
+                       !sawSettledCodexStatus,
+                       codexStatusFrameDetected(in: terminalText(raw)) {
+                        sawSettledCodexStatus = true
+                        captureUntil = now.addingTimeInterval(postStatusCaptureInterval(for: .codex))
+                    }
                 }
             }
 
             let ready = request.provider == .claude || sawPrompt
             if commandsSent < maximumAttempts,
+               !sawSettledCodexStatus,
                ready,
                now >= nextCommandAt,
                now.timeIntervalSince(lastOutputAt) >= 0.25 {
@@ -210,13 +217,30 @@ enum CLIStatusProbe {
         return names.map { EnvironmentChange(name: $0, value: proxy) }
     }
 
-    /// Both CLIs receive one slash command. The capture period lets their
-    /// persistent TUI settle before the probe interrupts its own child.
+    /// Runs after a recognized frame (or the final bounded attempt) so the
+    /// persistent TUI can settle before the probe interrupts its own child.
     static func postStatusCaptureInterval(for provider: Provider) -> TimeInterval {
         switch provider {
         case .claude: return 10
         case .codex: return 10
         }
+    }
+
+    static func maximumCommandAttempts(for provider: Provider) -> Int {
+        provider == .codex ? 3 : 1
+    }
+
+    /// Detect only fields unique to Codex's `/status` view. The welcome
+    /// screen can contain model/directory text too, so those alone are not a
+    /// success signal. Subscription and API/custom status variants are both
+    /// recognized, allowing either to stop adaptive retries early.
+    static func codexStatusFrameDetected(in text: String) -> Bool {
+        let lower = text.lowercased()
+        return lower.contains("weekly limit:")
+            || lower.contains("5h limit:")
+            || lower.contains("limits: data not available")
+            || lower.contains("model provider:")
+            || lower.contains("visit https://chatgpt.com/codex/settings/usage")
     }
 
     /// Called when the app stops its refresh lifecycle. SIGKILL is warranted

@@ -211,6 +211,28 @@ struct CLIUsageParserTests {
             CLIStatusProbe.postStatusCaptureInterval(for: .codex) == 10,
             "Codex captures one settled status frame before interruption"
         )
+        expect(
+            CLIStatusProbe.maximumCommandAttempts(for: .codex) == 3,
+            "Codex adaptive status refresh is capped at three commands"
+        )
+        expect(
+            CLIStatusProbe.maximumCommandAttempts(for: .claude) == 1,
+            "Claude status refresh remains single-command"
+        )
+        expect(
+            CLIStatusProbe.codexStatusFrameDetected(in: "Weekly limit: 94% left"),
+            "Codex subscription status stops adaptive retries"
+        )
+        expect(
+            CLIStatusProbe.codexStatusFrameDetected(
+                in: "Model provider: custom\nLimits: data not available"
+            ),
+            "Codex API/custom status stops adaptive retries"
+        )
+        expect(
+            !CLIStatusProbe.codexStatusFrameDetected(in: "OpenAI Codex\nModel: gpt-5.6"),
+            "Codex welcome screen does not stop status retries"
+        )
 
         // Claude writes its Status tab by moving the cursor around an
         // alternate screen. Removing ANSI codes alone joins cells such as
