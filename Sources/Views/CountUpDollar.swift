@@ -40,14 +40,18 @@ struct CountUpDollar: View {
             lastSeenTarget = target
             startAnimation()
         }
-        .onChange(of: target) { _ in
+        .onChange(of: target) { newTarget in
             // Smooth update during a refresh — count from where the eye
             // last saw the number, not from zero. If a prior count is
             // still in flight, resume from the interpolated on-screen
             // value so the retarget never visibly snaps.
             startValue = displayedValue()
             animationStart = Date()
-            lastSeenTarget = target
+            // Use the callback value rather than this View instance's
+            // captured `target`. During rapid profile switches SwiftUI can
+            // deliver the change to the previous view value, which made the
+            // cost numeral trail the header selection by one click.
+            lastSeenTarget = newTarget
             startAnimation()
         }
     }
