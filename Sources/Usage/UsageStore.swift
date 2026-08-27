@@ -28,7 +28,25 @@ final class UsageStore: ObservableObject {
     }
 
     var codexHasSubscriptionQuota: Bool {
-        codex.fiveHour.hasReading || codex.weekly.hasReading
+        codexHeadlineUsage.fiveHour.hasReading || codexHeadlineUsage.weekly.hasReading
+    }
+
+    /// Single source of truth for every quota surface. The selected profile
+    /// ID and its reading resolve together, avoiding a one-render lag between
+    /// the separately published ID and the legacy `codex` mirror.
+    var codexHeadlineUsage: AppUsage {
+        Self.resolveCodexHeadlineUsage(
+            profileID: codexHeadlineProfileID,
+            readings: codexByProfile,
+            fallback: codex
+        )
+    }
+
+    nonisolated static func resolveCodexHeadlineUsage(
+        profileID: UUID?, readings: [UUID: AppUsage], fallback: AppUsage
+    ) -> AppUsage {
+        guard let profileID, let selected = readings[profileID] else { return fallback }
+        return selected
     }
 
     private var pollInterval: TimeInterval {

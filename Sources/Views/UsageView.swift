@@ -27,7 +27,7 @@ struct UsageView: View {
                 ProviderUsageBlock(usage: store.claude, style: style,
                                    seed: 1, provider: .claude)
                 hairline
-                ProviderUsageBlock(usage: store.codex, style: style,
+                ProviderUsageBlock(usage: store.codexHeadlineUsage, style: style,
                                    seed: 3, provider: .codex)
             case (true, false):
                 ProviderUsageBlock(usage: store.claude, style: style,
@@ -43,7 +43,7 @@ struct UsageView: View {
                     .padding(.horizontal, 12)
                     .transition(breakdownTransition)
                 hairline
-                ProviderUsageBlock(usage: store.codex, style: style,
+                ProviderUsageBlock(usage: store.codexHeadlineUsage, style: style,
                                    seed: 3, provider: .codex)
             case (false, false):
                 BothHiddenPlaceholder()

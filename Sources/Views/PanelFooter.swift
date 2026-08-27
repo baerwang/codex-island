@@ -138,7 +138,7 @@ struct PanelFooter: View {
         guard screenPref.screen == .usage else { return nil }
         var visibleUsages: [AppUsage] = []
         if visibility.claudeVisible { visibleUsages.append(usageStore.claude) }
-        if visibility.codexVisible { visibleUsages.append(usageStore.codex) }
+        if visibility.codexVisible { visibleUsages.append(usageStore.codexHeadlineUsage) }
         guard !visibleUsages.isEmpty else { return nil }
         guard !visibleUsages.contains(where: {
             $0.fiveHour.hasReading || $0.weekly.hasReading

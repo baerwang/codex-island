@@ -508,9 +508,9 @@ struct SettingsView: View {
             }
             SettingsRow(
                 title: "Codex",
-                subtitle: providerSubtitle(usage.codex),
+                subtitle: providerSubtitle(usage.codexHeadlineUsage),
                 dot: IslandColor.codex,
-                chip: usage.codex.plan?.uppercased()
+                chip: usage.codexHeadlineUsage.plan?.uppercased()
             ) {
                 SettingsToggle(isOn: visibility.codexVisible) {
                     withAnimation(.openMorph) {

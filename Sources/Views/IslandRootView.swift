@@ -551,7 +551,9 @@ private struct PeekPillOverlay: View {
     }
 
     private var currentWindow: WindowUsage {
-        let usage: AppUsage = provider == .claude ? usageStore.claude : usageStore.codex
+        let usage: AppUsage = provider == .claude
+            ? usageStore.claude
+            : usageStore.codexHeadlineUsage
         return CompactQuotaSelection.select(
             usage: usage, preferred: quotaWindow.selectedWindow(for: provider)
         ).window
@@ -562,7 +564,9 @@ private struct PeekPillOverlay: View {
     }
 
     private var selectedWindowKind: UsageWindow {
-        let usage: AppUsage = provider == .claude ? usageStore.claude : usageStore.codex
+        let usage: AppUsage = provider == .claude
+            ? usageStore.claude
+            : usageStore.codexHeadlineUsage
         return CompactQuotaSelection.select(
             usage: usage, preferred: quotaWindow.selectedWindow(for: provider)
         ).kind

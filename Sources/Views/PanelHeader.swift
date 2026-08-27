@@ -44,7 +44,7 @@ struct PanelHeader: View {
 
     private var codexPlanTag: String? {
         if screenPref.screen == .usage {
-            return usageStore.codex.plan?.uppercased()
+            return usageStore.codexHeadlineUsage.plan?.uppercased()
         }
         guard let selectedID = costProfile.selectedProfileID else { return nil }
         return usageStore.codexByProfile[selectedID]?.plan?.uppercased()

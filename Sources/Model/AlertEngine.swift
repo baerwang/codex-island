@@ -127,7 +127,7 @@ final class AlertEngine: ObservableObject {
                 // 5h window, and severity must track the same number the peek
                 // pill and silhouette tint surface. Two-window plans still
                 // alert on 5h (peekWindow prefers it).
-                window: usage.codex.peekWindow
+                window: usage.codexHeadlineUsage.peekWindow
             ),
         ]
 

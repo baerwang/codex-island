@@ -78,6 +78,22 @@ struct AlertDecisionTests {
         expect(retainedSamples.count == 1, "usage history hides expired and future samples on read")
         expect(retainedSamples.first?.used == 0.2, "usage history keeps the current-window sample")
 
+        let selectedProfileID = UUID()
+        let selectedUsage = AppUsage(
+            fiveHour: WindowUsage(usedPercent: 0.72, resetAt: resetA, error: nil),
+            weekly: WindowUsage(usedPercent: 0.34, resetAt: resetB, error: nil)
+        )
+        let fallbackUsage = AppUsage(
+            fiveHour: WindowUsage(usedPercent: 0.10, resetAt: resetA, error: nil),
+            weekly: WindowUsage(usedPercent: 0.20, resetAt: resetB, error: nil)
+        )
+        let resolvedUsage = UsageStore.resolveCodexHeadlineUsage(
+            profileID: selectedProfileID,
+            readings: [selectedProfileID: selectedUsage],
+            fallback: fallbackUsage
+        )
+        expect(resolvedUsage.fiveHour.percentInt == 72, "Codex content resolves from selected profile ID")
+
         print(failures == 0 ? "ALL PASS" : "\(failures) FAILURE(S)")
         exit(failures == 0 ? 0 : 1)
     }
