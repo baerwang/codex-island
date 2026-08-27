@@ -142,7 +142,9 @@ enum CLIStatusProbe {
                     if commandsSent > 0,
                        !sawSettledCodexStatus,
                        now >= nextStatusDetectionAt {
-                        let detected = codexStatusFrameDetected(in: terminalText(raw))
+                        let detected = codexStatusFrameDetected(
+                            in: transcriptText(raw, provider: .codex)
+                        )
                         let detectedAt = Date()
                         nextStatusDetectionAt = detectedAt.addingTimeInterval(statusDetectionInterval)
                         if detected {
@@ -202,7 +204,11 @@ enum CLIStatusProbe {
         }
         close(master)
         reapAfterClosingPTY(pid)
-        return Transcript(text: terminalText(raw), raw: raw, timedOut: timedOut)
+        return Transcript(
+            text: transcriptText(raw, provider: request.provider),
+            raw: raw,
+            timedOut: timedOut
+        )
     }
 
     /// Runs after `forkpty`. This body must avoid Foundation, Swift strings,
@@ -528,6 +534,21 @@ enum CLIStatusProbe {
         let primaryText = primary.rendered()
         if quotaScore(primaryText) > 0 { return primaryText }
         return strippedTerminalText(raw)
+    }
+
+    /// Codex's status panel is taller than the 24-row PTY and redraws it with
+    /// scroll-region commands our tiny renderer intentionally does not model.
+    /// The physical frame can therefore retain the account weekly row while
+    /// dropping a lower model-specific 5h row that is still present in the
+    /// linear stream. Merge that stream only when it contains more quota
+    /// evidence; Claude keeps the physical-frame-only behavior its parser
+    /// relies on for overwritten labels.
+    static func transcriptText(_ raw: Data, provider: Provider) -> String {
+        let rendered = terminalText(raw)
+        guard provider == .codex else { return rendered }
+        let linear = strippedTerminalText(raw)
+        guard quotaScore(linear) > quotaScore(rendered) else { return rendered }
+        return rendered + "\n" + linear
     }
 
     private static func strippedTerminalText(_ raw: Data) -> String {

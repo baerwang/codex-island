@@ -282,6 +282,32 @@ struct CLIUsageParserTests {
             "terminal renderer preserves text before an incomplete CSI tail"
         )
 
+        let tallCodexStatus = Data("""
+        \u{1B}[2J\u{1B}[1;1HWeekly limit: 81% left (resets 22:14 on 1 Sep)
+        \u{1B}[2;1H5h limit: 100% left (resets 00:31 on 28 Aug)
+        \u{1B}[2;1H\u{1B}[2K
+        """.utf8)
+        let physicalCodexStatus = CLIStatusProbe.terminalText(tallCodexStatus)
+        let mergedCodexStatus = CLIStatusProbe.transcriptText(
+            tallCodexStatus, provider: .codex
+        )
+        let parsedMergedCodexStatus = CLIUsageParser.parseCodex(
+            mergedCodexStatus, timedOut: false
+        )
+        expect(
+            !physicalCodexStatus.contains("5h limit"),
+            "physical Codex frame can lose a scrolled 5h row"
+        )
+        expect(
+            parsedMergedCodexStatus.fiveHour.hasReading
+                && parsedMergedCodexStatus.fiveHour.percentInt == 0,
+            "Codex transcript merge restores a scrolled 5h row"
+        )
+        expect(
+            parsedMergedCodexStatus.weekly.percentInt == 19,
+            "Codex transcript merge keeps the account weekly row"
+        )
+
         // A real Claude redraw can temporarily leave its progress bar over a
         // label and use box drawing for its section rule. The completed Status
         // screen still has three ordered percent/reset pairs; this is the
