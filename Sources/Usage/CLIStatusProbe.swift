@@ -236,11 +236,13 @@ enum CLIStatusProbe {
     /// recognized, allowing either to stop adaptive retries early.
     static func codexStatusFrameDetected(in text: String) -> Bool {
         let lower = text.lowercased()
-        return lower.contains("weekly limit:")
-            || lower.contains("5h limit:")
+        let completeQuota = lower.range(
+            of: #"(?is)(?:weekly|5h)\s+limit:.*?\d{1,3}%\s+left.*?resets"#,
+            options: .regularExpression
+        ) != nil
+        return completeQuota
             || lower.contains("limits: data not available")
             || lower.contains("model provider:")
-            || lower.contains("visit https://chatgpt.com/codex/settings/usage")
     }
 
     /// Called when the app stops its refresh lifecycle. SIGKILL is warranted

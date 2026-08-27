@@ -224,17 +224,20 @@ enum CLIUsageParser {
         if noSubscriptionLimits {
             return UsageFetcher.noSubscriptionUsage(plan: "api")
         }
-        guard let fiveHour, let weekly else {
+        guard fiveHour != nil || weekly != nil else {
             return UsageFetcher.errorPair(timedOut ? "codex timeout" : "status refresh pending")
         }
-        var windows = [detail(id: "codex.5h", label: "5h limit", reading: fiveHour)]
+        var windows: [ProviderQuotaWindow] = []
+        if let fiveHour {
+            windows.append(detail(id: "codex.5h", label: "5h limit", reading: fiveHour))
+        }
         for (index, item) in weekReadings.enumerated() {
             let label = index == 0 ? "Weekly limit" : "Model weekly limit \(index)"
             windows.append(detail(id: "codex.week.\(index)", label: label, reading: item))
         }
         return AppUsage(
-            fiveHour: window(used: fiveHour.percent, reset: fiveHour.reset),
-            weekly: window(used: weekly.percent, reset: weekly.reset),
+            fiveHour: fiveHour.map { window(used: $0.percent, reset: $0.reset) } ?? .unknown,
+            weekly: weekly.map { window(used: $0.percent, reset: $0.reset) } ?? .unknown,
             plan: plan,
             windows: windows
         )

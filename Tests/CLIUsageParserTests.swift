@@ -144,6 +144,21 @@ struct CLIUsageParserTests {
         """, timedOut: false)
         expect(codexTier.plan == "pro ×5", "Codex status preserves stated Pro multiplier")
 
+        let codexWeeklyOnly = CLIUsageParser.parseCodex("""
+        Account: weekly@example.com (Pro)
+        Weekly limit: 91% left (resets in 6d 2h)
+        """, timedOut: false)
+        expect(!codexWeeklyOnly.fiveHour.hasReading, "Codex weekly-only status does not fabricate 5h quota")
+        expect(codexWeeklyOnly.weekly.percentInt == 9, "Codex weekly-only status keeps weekly quota")
+        expect(codexWeeklyOnly.windows.count == 1, "Codex weekly-only status keeps one real window")
+
+        let codexFiveHourOnly = CLIUsageParser.parseCodex("""
+        Account: session@example.com (Pro)
+        5h limit: 88% left (resets in 3h)
+        """, timedOut: false)
+        expect(codexFiveHourOnly.fiveHour.percentInt == 12, "Codex 5h-only status keeps session quota")
+        expect(!codexFiveHourOnly.weekly.hasReading, "Codex 5h-only status does not fabricate weekly quota")
+
         let redrawnCodex = CLIUsageParser.parseCodex("""
         Weekly limit: 94% left (resets 22:14 on 1 Sep)
         GPT-5.3-Codex-Spark limit:
@@ -220,8 +235,14 @@ struct CLIUsageParserTests {
             "Claude status refresh remains single-command"
         )
         expect(
-            CLIStatusProbe.codexStatusFrameDetected(in: "Weekly limit: 94% left"),
+            CLIStatusProbe.codexStatusFrameDetected(
+                in: "Weekly limit: 94% left (resets in 6d)"
+            ),
             "Codex subscription status stops adaptive retries"
+        )
+        expect(
+            !CLIStatusProbe.codexStatusFrameDetected(in: "Weekly limit:"),
+            "Codex partial status label does not stop adaptive retries"
         )
         expect(
             CLIStatusProbe.codexStatusFrameDetected(
