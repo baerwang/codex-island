@@ -173,6 +173,9 @@
 "5 hours" = "5 hours";
 "Quota mode" = "Quota mode";
 "All" = "All";
+"%@ LOCAL TOKEN USAGE" = "%@ LOCAL TOKEN USAGE";
+"%@ · Codex %@" = "%@ · Codex %@";
+"LOCAL TOKENS" = "LOCAL TOKENS";
 "Account" = "Account";
 "Model" = "Model";
 "Auto reads CLI status; API keeps local token and cost stats only." = "Auto reads CLI status; API keeps local token and cost stats only.";

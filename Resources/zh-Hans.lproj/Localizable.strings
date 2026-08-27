@@ -173,6 +173,9 @@
 "5 hours" = "5 小时";
 "Quota mode" = "额度模式";
 "All" = "全部";
+"%@ LOCAL TOKEN USAGE" = "%@ 本地 TOKEN 消耗";
+"%@ · Codex %@" = "%@ · Codex %@";
+"LOCAL TOKENS" = "本地 TOKEN";
 "Account" = "账号";
 "Model" = "模型";
 "Auto reads CLI status; API keeps local token and cost stats only." = "自动读取 CLI 状态；API 仅保留本地 Token 和成本统计。";

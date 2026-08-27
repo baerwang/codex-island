@@ -69,6 +69,10 @@ struct DailyTokenBucket: Codable {
     let dayStart: Date
     let tokens: Int
     let billableTokens: Int
+    /// Codex profile UUID that produced this local-log usage. nil represents
+    /// Claude/OpenCode or an unattributed local source. Overview can therefore
+    /// follow the explicitly selected Codex account without merging homes.
+    var sourceID: String? = nil
 }
 
 /// Local-log attribution for one working directory. `sourceID` distinguishes

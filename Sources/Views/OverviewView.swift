@@ -8,14 +8,29 @@ struct OverviewView: View {
     @ObservedObject private var screenPref = ScreenPref.shared
     @ObservedObject private var costStore = CostStore.shared
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
+    @ObservedObject private var usageStore = UsageStore.shared
+    @ObservedObject private var cliConfig = CLIProviderConfigStore.shared
     @State private var selectedDate: Date?
 
     private var days: [OverviewDay] {
         Self.joinDays(
             claudeBuckets: visibility.claudeVisible ? costStore.claude.dailyTokens : [],
-            codexBuckets: visibility.codexVisible ? costStore.codex.dailyTokens : [],
+            codexBuckets: visibleCodexBuckets,
             mode: .all
         )
+    }
+
+    private var visibleCodexBuckets: [DailyTokenBucket] {
+        guard visibility.codexVisible else { return [] }
+        guard let selectedID = usageStore.codexHeadlineProfileID?.uuidString else {
+            return costStore.codex.dailyTokens
+        }
+        return costStore.codex.dailyTokens.filter { $0.sourceID == selectedID }
+    }
+
+    private var selectedCodexProfileName: String? {
+        guard let selectedID = usageStore.codexHeadlineProfileID else { return nil }
+        return cliConfig.codexProfiles.first { $0.id == selectedID }?.name
     }
 
     private var totalTokens: Int {
@@ -144,12 +159,18 @@ struct OverviewView: View {
     }
 
     private var summaryLabel: String {
-        guard let selectedDay else { return L10n.tr("%@ TOKENS", Self.currentYearString) }
+        guard let selectedDay else {
+            return L10n.tr("%@ LOCAL TOKEN USAGE", Self.currentYearString)
+        }
         return Self.dayLabelFormatter.string(from: selectedDay.date).uppercased()
     }
 
     private var summarySubline: String {
-        guard let selectedDay else { return L10n.tr("%d Active Days", activeDays) }
+        guard let selectedDay else {
+            let active = L10n.tr("%d Active Days", activeDays)
+            guard let selectedCodexProfileName else { return active }
+            return L10n.tr("%@ · Codex %@", active, selectedCodexProfileName)
+        }
         switch selectedDay.dominantProvider {
         case .none:   return L10n.tr("No Activity")
         case .claude: return L10n.tr("Mostly Claude")

@@ -23,9 +23,9 @@ final class CostStore: ObservableObject {
 
     var loading: Bool { claudeLoading || codexLoading }
 
-    /// v8 starts a clean local-log cache after project/profile attribution was
-    /// added. v7 is deliberately not migrated.
-    private static let cacheKey = "MacIsland.costCache.v8"
+    /// v9 keeps daily history separated by Codex profile. v8 aggregated those
+    /// buckets and cannot support account-selected overview filtering.
+    private static let cacheKey = "MacIsland.costCache.v9"
     private static let cacheEncoder = JSONEncoder()
     private static let cacheDecoder = JSONDecoder()
     private var pollTimer: Timer?

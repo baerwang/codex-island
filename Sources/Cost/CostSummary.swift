@@ -45,8 +45,8 @@ enum CostSummary {
         var monthDollars = 0.0, monthTokens = 0, monthBillable = 0
         var hourlyBuckets = Array(repeating: 0.0, count: currentHour + 1)
         var dailyBuckets = Array(repeating: 0.0, count: currentDay + 1)
-        var historyTokenBuckets = Array(repeating: 0, count: historyDays)
-        var historyBillableBuckets = Array(repeating: 0, count: historyDays)
+        var historyTokensBySource: [String: [Int]] = [:]
+        var historyBillableBySource: [String: [Int]] = [:]
         // Filtered to non-zero token events so handshake/stub rows don't
         // show up as "unpriced" warnings — the user only cares about
         // models that actually moved tokens.
@@ -97,9 +97,16 @@ enum CostSummary {
             if event.timestamp >= historyStart {
                 let eventDay = cal.startOfDay(for: event.timestamp)
                 let dayOffset = cal.dateComponents([.day], from: historyStart, to: eventDay).day ?? -1
-                if historyTokenBuckets.indices.contains(dayOffset) {
-                    historyTokenBuckets[dayOffset] += tokens
-                    historyBillableBuckets[dayOffset] += billable
+                if (0..<historyDays).contains(dayOffset) {
+                    let sourceKey = event.sourceID ?? ""
+                    var sourceTokens = historyTokensBySource[sourceKey]
+                        ?? Array(repeating: 0, count: historyDays)
+                    var sourceBillable = historyBillableBySource[sourceKey]
+                        ?? Array(repeating: 0, count: historyDays)
+                    sourceTokens[dayOffset] += tokens
+                    sourceBillable[dayOffset] += billable
+                    historyTokensBySource[sourceKey] = sourceTokens
+                    historyBillableBySource[sourceKey] = sourceBillable
                 }
             }
 
@@ -189,10 +196,10 @@ enum CostSummary {
             ),
             recentByModel: recentRows,
             weekByModel: weekRows,
-            dailyTokens: dailyTokenBuckets(
+            dailyTokens: dailyTokenBucketsBySource(
                 start: historyStart,
-                tokens: historyTokenBuckets,
-                billableTokens: historyBillableBuckets,
+                tokens: historyTokensBySource,
+                billableTokens: historyBillableBySource,
                 calendar: cal
             ),
             projects: projects.map { key, value in
@@ -229,19 +236,26 @@ enum CostSummary {
             .path
     }
 
-    private static func dailyTokenBuckets(
+    private static func dailyTokenBucketsBySource(
         start: Date,
-        tokens: [Int],
-        billableTokens: [Int],
+        tokens: [String: [Int]],
+        billableTokens: [String: [Int]],
         calendar: Calendar
     ) -> [DailyTokenBucket] {
-        tokens.indices.map { index in
-            let day = calendar.date(byAdding: .day, value: index, to: start) ?? start
-            return DailyTokenBucket(
-                dayStart: day,
-                tokens: tokens[index],
-                billableTokens: billableTokens[index]
-            )
+        tokens.keys.sorted().flatMap { sourceKey in
+            let sourceTokens = tokens[sourceKey] ?? []
+            let sourceBillable = billableTokens[sourceKey]
+                ?? Array(repeating: 0, count: sourceTokens.count)
+            return sourceTokens.indices.compactMap { index -> DailyTokenBucket? in
+                guard sourceTokens[index] > 0 || sourceBillable[index] > 0 else { return nil }
+                let day = calendar.date(byAdding: .day, value: index, to: start) ?? start
+                return DailyTokenBucket(
+                    dayStart: day,
+                    tokens: sourceTokens[index],
+                    billableTokens: sourceBillable[index],
+                    sourceID: sourceKey.isEmpty ? nil : sourceKey
+                )
+            }
         }
     }
 

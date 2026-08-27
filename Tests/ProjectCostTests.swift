@@ -35,6 +35,14 @@ struct ProjectCostTests {
         expect(Set(summary.projects.map(\.todayTokens)) == [350, 3_100], "each profile keeps its own today tokens")
         expect(summary.today.tokens == 3_450, "provider today total remains the sum of project rows")
         expect(summary.projects.allSatisfy { $0.monthDollars > 0 }, "per-project month dollar estimates are retained")
+        let personalHistory = summary.dailyTokens
+            .filter { $0.sourceID == "personal-home" }
+            .reduce(0) { $0 + $1.tokens }
+        let workHistory = summary.dailyTokens
+            .filter { $0.sourceID == "work-home" }
+            .reduce(0) { $0 + $1.tokens }
+        expect(personalHistory == 350, "daily history retains personal Codex profile attribution")
+        expect(workHistory == 3_100, "daily history retains work Codex profile attribution")
 
         let canonicalized = CostSummary.summarize(events: [
             TokenEvent(

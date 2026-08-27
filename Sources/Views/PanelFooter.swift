@@ -94,7 +94,7 @@ struct PanelFooter: View {
             case .usage: return pref.style.label.uppercased()
             case .cost:  return costPref.style.label
             case .models: return L10n.tr("MODELS")
-            case .overview: return currentYearString
+            case .overview: return L10n.tr("LOCAL TOKENS")
             }
         }()
         Text(label)
