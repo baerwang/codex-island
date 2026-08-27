@@ -73,17 +73,16 @@ struct PanelHeader: View {
             Button {
                 usageStore.selectNextCodexProfile(in: profiles)
             } label: {
-                HStack(spacing: 3) {
-                    Text("\(selectedIndex + 1)/\(profiles.count)")
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                }
-                .font(Typography.micro)
-                .foregroundStyle(.white.opacity(0.52))
+                profilePickerLabel(
+                    position: "\(selectedIndex + 1)/\(profiles.count)",
+                    name: selectedName
+                )
             }
             .buttonStyle(.plain)
             .help("Current: \(selectedName). Click to switch Codex profile")
-            .accessibilityLabel("Codex profile \(selectedIndex + 1) of \(profiles.count). Next profile")
+            .accessibilityLabel(
+                "Codex profile \(selectedName), \(selectedIndex + 1) of \(profiles.count). Next profile"
+            )
         }
     }
 
@@ -99,22 +98,33 @@ struct PanelHeader: View {
             Button {
                 costProfile.advance(in: profiles)
             } label: {
-                HStack(spacing: 3) {
-                    if let selectedIndex {
-                        Text("\(selectedIndex + 1)/\(profiles.count)")
-                    } else {
-                        Text(L10n.tr("All"))
-                    }
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                }
-                .font(Typography.micro)
-                .foregroundStyle(.white.opacity(0.52))
+                profilePickerLabel(
+                    position: selectedIndex.map { "\($0 + 1)/\(profiles.count)" },
+                    name: selectedName
+                )
             }
             .buttonStyle(.plain)
             .help("Current local usage: \(selectedName). Click to switch Codex profile")
             .accessibilityLabel("Codex local usage profile: \(selectedName)")
         }
+    }
+
+    private func profilePickerLabel(position: String?, name: String) -> some View {
+        HStack(spacing: 4) {
+            if let position {
+                Text(position)
+                Text("·")
+                    .foregroundStyle(.white.opacity(0.28))
+            }
+            Text(name)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: 76, alignment: .leading)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .semibold))
+        }
+        .font(Typography.micro)
+        .foregroundStyle(.white.opacity(0.52))
     }
 
     @ViewBuilder
