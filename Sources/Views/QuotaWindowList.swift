@@ -5,6 +5,7 @@ import SwiftUI
 struct QuotaWindowList: View {
     @ObservedObject private var usage = UsageStore.shared
     @ObservedObject private var config = CLIProviderConfigStore.shared
+    @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -40,7 +41,7 @@ struct QuotaWindowList: View {
                         .foregroundStyle(.white.opacity(0.60))
                         .lineLimit(1)
                     Spacer(minLength: 6)
-                    Text("\(Int((window.usedPercent * 100).rounded()))%")
+                    Text(quotaPercent(window.usedPercent))
                         .font(Typography.bodyNumber)
                         .foregroundStyle(.white.opacity(0.86))
                     if let reset = window.resetAt {
@@ -51,5 +52,10 @@ struct QuotaWindowList: View {
                 }
             }
         }
+    }
+
+    private func quotaPercent(_ used: Double) -> String {
+        let fraction = usageDisplay.mode == .remaining ? 1 - used : used
+        return "\(L10n.tr(usageDisplay.mode.label)) \(Int((fraction * 100).rounded()))%"
     }
 }

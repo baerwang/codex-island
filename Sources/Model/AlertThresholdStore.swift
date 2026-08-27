@@ -3,7 +3,7 @@ import Foundation
 /// User-controlled approaching-limit alert preferences.
 ///
 /// When `enabled` is true, the island silhouette glow shifts to amber/red
-/// while a tracked 5-hour window is at or above the user's chosen
+/// while the selected compact quota window is at or above the user's chosen
 /// thresholds, and the peek pill auto-extends once when a window first
 /// crosses a threshold inside its current reset cycle.
 ///

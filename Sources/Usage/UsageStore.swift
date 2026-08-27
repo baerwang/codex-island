@@ -14,12 +14,15 @@ final class UsageStore: ObservableObject {
     @Published private(set) var codexHeadlineProfileID: UUID?
     @Published private(set) var preferredCodexProfileID: UUID?
     @Published var lastUpdated: Date?
+    @Published private(set) var claudeLastUpdated: Date?
+    @Published private(set) var codexLastUpdated: Date?
     @Published var loading = false
 
     private var refreshTask: Task<Void, Never>?
     private var pollTimer: Timer?
     private var intervalCancellable: AnyCancellable?
     private var refreshPending = false
+    private var codexRefreshPending = false
     private var activeRefreshID: UUID?
 
     private init() {
@@ -94,6 +97,8 @@ final class UsageStore: ObservableObject {
             let claudeNow = Date()
             claude = AppUsage.merged(fetched: newClaude, retaining: claude, at: claudeNow)
             UsageHistoryStore.shared.record(provider: .claude, usage: newClaude, at: claudeNow)
+            claudeLastUpdated = claudeNow
+            updateCombinedTimestamp()
 
             let completedProfileReadings = await profileReadings
             guard !Task.isCancelled, activeRefreshID == refreshID else {
@@ -101,35 +106,7 @@ final class UsageStore: ObservableObject {
                 return
             }
 
-            let now = Date()
-            var nextProfiles: [UUID: AppUsage] = [:]
-            for (id, fetched) in completedProfileReadings {
-                let prior = codexByProfile[id] ?? .empty
-                nextProfiles[id] = AppUsage.merged(fetched: fetched, retaining: prior, at: now)
-            }
-            codexByProfile = nextProfiles
-            if profiles.isEmpty {
-                codex = UsageFetcher.errorPair("add codex profile")
-                codexHeadlineProfileID = nil
-            } else if let headline = CodexHeadlineSelection.select(
-                profiles: profiles, readings: nextProfiles, preferredID: preferredCodexProfileID
-            ) {
-                // Quotas from accounts are never combined. The compact island
-                // shows one usable manually configured profile; Settings and
-                // the expanded quota list retain every profile separately.
-                codex = headline.usage
-                codexHeadlineProfileID = headline.id
-            } else {
-                codex = UsageFetcher.errorPair("codex status unavailable")
-                codexHeadlineProfileID = nil
-            }
-            for (profileID, profileUsage) in nextProfiles {
-                UsageHistoryStore.shared.record(
-                    provider: .codex, usage: profileUsage, at: now,
-                    sourceID: profileID.uuidString
-                )
-            }
-            lastUpdated = now
+            applyCodexReadings(completedProfileReadings, profiles: profiles, at: Date())
 
             // Login method is intentionally secondary: it can update the
             // badge after quota is visible, and an unavailable Status screen
@@ -143,6 +120,84 @@ final class UsageStore: ObservableObject {
                 applyClaudeLoginMethod(loginMethod, at: Date())
             }
             finishRefresh(id: refreshID)
+        }
+    }
+
+    /// Refresh only the manually configured Codex accounts. Settings calls
+    /// this when a Codex launch field changes so editing CODEX_HOME/proxy does
+    /// not repeatedly open unrelated Claude `/usage` and `/status` sessions.
+    func refreshCodexForConfiguredProfiles() {
+        guard !loading else {
+            codexRefreshPending = true
+            return
+        }
+        if AppEnvironment.isDemo {
+            loadDemoUsage()
+            return
+        }
+
+        loading = true
+        let refreshID = UUID()
+        activeRefreshID = refreshID
+        refreshTask = Task {
+            let profiles = CLIProviderConfigStore.shared.activeCodexProfiles
+            let readings = await Self.fetchCodexReadings(
+                profiles, workdir: CLIProviderConfigStore.statusWorkdir
+            )
+            guard !Task.isCancelled, activeRefreshID == refreshID else {
+                finishRefresh(id: refreshID)
+                return
+            }
+            applyCodexReadings(readings, profiles: profiles, at: Date())
+            finishRefresh(id: refreshID)
+        }
+    }
+
+    private func applyCodexReadings(
+        _ readings: [(UUID, AppUsage)], profiles: [CodexCLIProfile], at now: Date
+    ) {
+        if let preferredCodexProfileID,
+           !profiles.contains(where: { $0.id == preferredCodexProfileID }) {
+            self.preferredCodexProfileID = nil
+            UserDefaults.standard.removeObject(forKey: Self.preferredCodexProfileKey)
+        }
+        var nextProfiles: [UUID: AppUsage] = [:]
+        for (id, fetched) in readings {
+            let prior = codexByProfile[id] ?? .empty
+            nextProfiles[id] = AppUsage.merged(fetched: fetched, retaining: prior, at: now)
+        }
+        codexByProfile = nextProfiles
+        if profiles.isEmpty {
+            codex = UsageFetcher.errorPair("add codex profile")
+            codexHeadlineProfileID = nil
+        } else if let headline = CodexHeadlineSelection.select(
+            profiles: profiles, readings: nextProfiles, preferredID: preferredCodexProfileID
+        ) {
+            // Quotas from accounts are never combined. The compact island
+            // shows one usable manually configured profile; Settings and
+            // the expanded quota list retain every profile separately.
+            codex = headline.usage
+            codexHeadlineProfileID = headline.id
+        } else {
+            codex = UsageFetcher.errorPair("codex status unavailable")
+            codexHeadlineProfileID = nil
+        }
+        for (profileID, profileUsage) in nextProfiles {
+            UsageHistoryStore.shared.record(
+                provider: .codex, usage: profileUsage, at: now,
+                sourceID: profileID.uuidString
+            )
+        }
+        codexLastUpdated = now
+        updateCombinedTimestamp()
+    }
+
+    private func updateCombinedTimestamp() {
+        switch (claudeLastUpdated, codexLastUpdated) {
+        case let (claude?, codex?): lastUpdated = min(claude, codex)
+        case let (claude?, nil): lastUpdated = claude
+        case let (nil, codex?): lastUpdated = codex
+        case (nil, nil): lastUpdated = nil
         }
     }
 
@@ -194,7 +249,11 @@ final class UsageStore: ObservableObject {
         loading = false
         if refreshPending {
             refreshPending = false
+            codexRefreshPending = false
             refresh()
+        } else if codexRefreshPending {
+            codexRefreshPending = false
+            refreshCodexForConfiguredProfiles()
         }
     }
 
@@ -229,6 +288,7 @@ final class UsageStore: ObservableObject {
         intervalCancellable?.cancel()
         intervalCancellable = nil
         refreshPending = false
+        codexRefreshPending = false
         refreshTask?.cancel()
         refreshTask = nil
         CLIStatusProbe.terminateAllActiveProbes()
@@ -257,7 +317,9 @@ final class UsageStore: ObservableObject {
             weekly: WindowUsage(usedPercent: 0.30, resetAt: weeklyReset, error: nil),
             plan: codex.plan
         )
-        lastUpdated = now
+        claudeLastUpdated = now
+        codexLastUpdated = now
+        updateCombinedTimestamp()
     }
 
     private func loadDemoUsage() {
@@ -272,6 +334,8 @@ final class UsageStore: ObservableObject {
             weekly: WindowUsage(usedPercent: 0.76, resetAt: now.addingTimeInterval(4 * 86400 + 18 * 3600), error: nil),
             plan: "pro"
         )
-        lastUpdated = now
+        claudeLastUpdated = now
+        codexLastUpdated = now
+        updateCombinedTimestamp()
     }
 }

@@ -120,15 +120,44 @@ struct PanelFooter: View {
     private var activeLoading: Bool {
         switch screenPref.screen {
         case .usage: return usageStore.loading
-        case .cost, .models, .overview: return costStore.loading
+        case .models: return usageStore.loading || costStore.loading
+        case .cost, .overview: return costStore.loading
         }
     }
 
     private var activeLastUpdated: Date? {
         switch screenPref.screen {
-        case .usage: return usageStore.lastUpdated
-        case .cost, .models, .overview: return costStore.lastUpdated
+        case .usage: return visibleUsageLastUpdated
+        case .models:
+            switch (visibleUsageLastUpdated, visibleCostLastUpdated) {
+            case let (usage?, cost?): return min(usage, cost)
+            case let (usage?, nil): return usage
+            case let (nil, cost?): return cost
+            case (nil, nil): return nil
+            }
+        case .cost, .overview: return visibleCostLastUpdated
         }
+    }
+
+    private var visibleUsageLastUpdated: Date? {
+        var dates: [Date?] = []
+        if visibility.claudeVisible { dates.append(usageStore.claudeLastUpdated) }
+        if visibility.codexVisible { dates.append(usageStore.codexLastUpdated) }
+        guard !dates.isEmpty else { return usageStore.lastUpdated }
+        guard dates.allSatisfy({ $0 != nil }) else { return nil }
+        return dates.compactMap { $0 }.min()
+    }
+
+    /// Cost providers commit independently. A successful Claude scan must
+    /// not make a still-stale Codex total look freshly synced (or vice
+    /// versa), and hidden providers must not hold the visible page back.
+    private var visibleCostLastUpdated: Date? {
+        var dates: [Date?] = []
+        if visibility.claudeVisible { dates.append(costStore.claudeLastUpdated) }
+        if visibility.codexVisible { dates.append(costStore.codexLastUpdated) }
+        guard !dates.isEmpty else { return costStore.lastUpdated }
+        guard dates.allSatisfy({ $0 != nil }) else { return nil }
+        return dates.compactMap { $0 }.min()
     }
 
     /// A completed poll is not a successful sync when every visible provider
@@ -153,7 +182,10 @@ struct PanelFooter: View {
         // each store's refresh() prevent click-spam from stacking fetches.
         Button(action: triggerRefresh) {
             HStack(spacing: 6) {
-                LiveDot(active: activeLastUpdated != nil && !activeLoading && activeStatusError == nil)
+                LiveDot(
+                    active: activeLastUpdated != nil && !activeLoading && activeStatusError == nil,
+                    updatedAt: activeLastUpdated
+                )
                 if activeLoading {
                     Text(L10n.tr("Syncing…"))
                         .font(Typography.label)
@@ -209,7 +241,10 @@ struct PanelFooter: View {
     private func triggerRefresh() {
         switch screenPref.screen {
         case .usage: usageStore.refresh()
-        case .cost, .models, .overview: costStore.refresh()
+        case .models:
+            usageStore.refresh()
+            costStore.refresh()
+        case .cost, .overview: costStore.refresh()
         }
     }
 

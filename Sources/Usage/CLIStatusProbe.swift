@@ -92,8 +92,12 @@ enum CLIStatusProbe {
         var captureUntil: Date?
         var cursorQueryTail = Data()
         var acceptedStatusWorkspaceTrust = false
-        let maximumAttempts = request.provider == .codex ? 3 : 1
-        let timeout = request.provider == .codex ? 28.0 : 32.0
+        // One interactive command per poll. Repeating `/status` inside the
+        // same background session increases account risk and can redraw a
+        // valid frame away; a failed poll retries only at the next configured
+        // refresh interval (or an explicit manual refresh).
+        let maximumAttempts = 1
+        let timeout = request.provider == .codex ? 23.0 : 32.0
 
         while !childExited {
             let now = Date()
@@ -206,12 +210,12 @@ enum CLIStatusProbe {
         return names.map { EnvironmentChange(name: $0, value: proxy) }
     }
 
-    /// Claude needs one settled Status frame; Codex sends three delayed
-    /// Status commands to absorb its occasionally late first response.
+    /// Both CLIs receive one slash command. The capture period lets their
+    /// persistent TUI settle before the probe interrupts its own child.
     static func postStatusCaptureInterval(for provider: Provider) -> TimeInterval {
         switch provider {
         case .claude: return 10
-        case .codex: return 8
+        case .codex: return 10
         }
     }
 

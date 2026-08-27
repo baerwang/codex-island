@@ -114,10 +114,10 @@ enum CodexLogReader {
 
             if nonCachedInput == 0 && cached == 0 && output == 0 { return }
 
-            // Fall back to gpt-5.4 for sessions that emit token_count before
-            // any turn_context (early Codex CLI builds did this). Better
-            // approximation than billing $0.
-            let model = currentModel ?? "gpt-5.4"
+            // Some logs emit token_count before any model metadata. Do not
+            // invent a billable model: keep the tokens, price them at zero,
+            // and surface the existing missing-price warning to the user.
+            let model = currentModel ?? "unknown-codex-model"
 
             out.append(CachedEvent(
                 timestamp: timestamp,

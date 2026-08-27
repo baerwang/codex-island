@@ -35,6 +35,18 @@ struct AlertDecisionTests {
         )
         expect(severity[.claude] == .warning, "visible Claude warning threshold computes")
         expect(severity[.codex] == .critical, "Codex critical threshold computes")
+        expect(
+            !AlertDecision.hasVisibleReading([
+                input(.claude, percent: 0, reset: resetA, error: "timeout")
+            ]),
+            "failed first poll does not consume alert warmup"
+        )
+        expect(
+            AlertDecision.hasVisibleReading([
+                input(.claude, percent: 0.81, reset: resetA)
+            ]),
+            "first real quota can consume alert warmup"
+        )
 
         let first = AlertDecision.evaluateCrossings(
             previous: [], inputs: [input(.claude, percent: 0.81, reset: resetA)],

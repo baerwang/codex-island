@@ -115,6 +115,9 @@
 "Target display" = "Target display";
 "Target Display" = "Target Display";
 "Tint the island and pulse the peek pill when 5-hour usage nears your limit." = "Tint the island and pulse the peek pill when 5-hour usage nears your limit.";
+"Tint the island and pulse the peek pill when its selected quota window nears your limit." = "Tint the island and pulse the peek pill when its selected quota window nears your limit.";
+"Scanning local Codex logs…" = "Scanning local Codex logs…";
+"No local usage for this Codex profile" = "No local usage for this Codex profile";
 "Tip: Command-click to cycle visualization" = "Tip: Command-click to cycle visualization";
 "Today" = "Today";
 "Token counting" = "Token counting";

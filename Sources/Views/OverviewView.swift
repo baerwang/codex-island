@@ -23,10 +23,18 @@ struct OverviewView: View {
 
     private var visibleCodexBuckets: [DailyTokenBucket] {
         guard visibility.codexVisible else { return [] }
-        guard let selectedID = codexProfile.selectedProfileID?.uuidString else {
+        guard let selectedID = codexProfile.selectedProfileID else {
             return costStore.codex.dailyTokens
         }
-        return costStore.codex.dailyTokens.filter { $0.sourceID == selectedID }
+        return costStore.codexByProfile[selectedID]?.dailyTokens ?? []
+    }
+
+    private var selectedProfileHasLocalUsage: Bool {
+        guard let selectedID = codexProfile.selectedProfileID else { return true }
+        guard let cost = costStore.codexByProfile[selectedID] else { return false }
+        return !cost.dailyTokens.isEmpty
+            || cost.today.tokens > 0
+            || cost.month.tokens > 0
     }
 
     private var selectedCodexProfileName: String? {
@@ -75,6 +83,14 @@ struct OverviewView: View {
 
             ContributionGrid(days: days, selectedDate: $selectedDate)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(alignment: .center) {
+                    if visibility.codexVisible,
+                       codexProfile.selectedProfileID != nil,
+                       !selectedProfileHasLocalUsage,
+                       totalTokens == 0 {
+                        profileEmptyState
+                    }
+                }
 
             if let selectedDay {
                 DayDetailStrip(
@@ -112,6 +128,30 @@ struct OverviewView: View {
             }
             model.setOverviewDayDetailVisible(false)
         }
+    }
+
+    private var profileEmptyState: some View {
+        HStack(spacing: 6) {
+            if costStore.codexLoading {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Image(systemName: "tray")
+            }
+            Text(costStore.codexLoading
+                 ? L10n.tr("Scanning local Codex logs…")
+                 : L10n.tr("No local usage for this Codex profile"))
+        }
+        .font(Typography.label)
+        .foregroundStyle(.white.opacity(0.58))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(0.06))
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+        )
+        .accessibilityElement(children: .combine)
     }
 
     private var summary: some View {

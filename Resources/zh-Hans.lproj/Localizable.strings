@@ -115,6 +115,9 @@
 "Target display" = "目标屏幕";
 "Target Display" = "目标屏幕";
 "Tint the island and pulse the peek pill when 5-hour usage nears your limit." = "当 5 小时用量接近限额时，为岛和预览胶囊显示提醒效果。";
+"Tint the island and pulse the peek pill when its selected quota window nears your limit." = "当所选额度窗口接近限额时，为灵动岛和预览胶囊显示提醒效果。";
+"Scanning local Codex logs…" = "正在扫描该 Codex 配置的本地日志…";
+"No local usage for this Codex profile" = "该 Codex 配置暂无本地消耗记录";
 "Tip: Command-click to cycle visualization" = "提示：Command 点击可切换可视化";
 "Today" = "今天";
 "Token counting" = "Token 统计";

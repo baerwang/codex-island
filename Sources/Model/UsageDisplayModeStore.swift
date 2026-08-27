@@ -24,6 +24,6 @@ final class UsageDisplayModeStore: ObservableObject {
 
     private init() {
         let raw = UserDefaults.standard.string(forKey: Self.key)
-        self.mode = UsageDisplayMode(rawValue: raw ?? "") ?? .used
+        self.mode = UsageDisplayMode(rawValue: raw ?? "") ?? .remaining
     }
 }

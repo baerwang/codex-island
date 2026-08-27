@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.removeObject(forKey: "CodexIsland.usageHistory.v2")
         UserDefaults.standard.removeObject(forKey: "MacIsland.costCache.v7")
         UserDefaults.standard.removeObject(forKey: "MacIsland.costCache.v8")
+        UserDefaults.standard.removeObject(forKey: "MacIsland.costCache.v9")
         // Status probes are permanently pinned to /private/tmp and plan tags
         // come only from CLI output. Drop transient preferences from the
         // earlier configurable-workdir/manual-plan experiments.

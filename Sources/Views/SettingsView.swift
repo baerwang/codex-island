@@ -26,7 +26,9 @@ struct SettingsView: View {
     @ObservedObject private var cliConfig = CLIProviderConfigStore.shared
 
     @AppStorage("Settings.activeTab") private var activeTabRaw: String = SettingsTab.general.rawValue
-    @State private var cliRefreshTask: Task<Void, Never>?
+    @State private var claudeRefreshTask: Task<Void, Never>?
+    @State private var codexRefreshTask: Task<Void, Never>?
+    @State private var codexCostRefreshTask: Task<Void, Never>?
     @State private var showsAllCodexProfiles = false
 
     private var activeTab: SettingsTab {
@@ -88,10 +90,14 @@ struct SettingsView: View {
         .frame(minWidth: 440, minHeight: 420)
         .background(Color(red: 0.020, green: 0.020, blue: 0.027))
         .preferredColorScheme(.dark)
-        .onChange(of: cliConfig.claudeProxyURL) { _ in queueCLIStatusRefresh() }
-        .onChange(of: codexStatusFingerprint) { _ in queueCLIStatusRefresh() }
-        .onChange(of: codexProfileNameFingerprint) { _ in cost.refreshCodexForConfiguredProfiles() }
-        .onDisappear { cliRefreshTask?.cancel() }
+        .onChange(of: cliConfig.claudeProxyURL) { _ in queueClaudeStatusRefresh() }
+        .onChange(of: codexStatusFingerprint) { _ in queueCodexStatusRefresh() }
+        .onChange(of: codexProfileNameFingerprint) { _ in queueCodexCostRefresh() }
+        .onDisappear {
+            claudeRefreshTask?.cancel()
+            codexRefreshTask?.cancel()
+            codexCostRefreshTask?.cancel()
+        }
     }
 
     // MARK: - Tabs
@@ -271,7 +277,7 @@ struct SettingsView: View {
             sectionLabel("Alerts")
             SettingsRow(
                 title: "Approaching-limit alerts",
-                subtitle: "Tint the island and pulse the peek pill when 5-hour usage nears your limit."
+                subtitle: "Tint the island and pulse the peek pill when its selected quota window nears your limit."
             ) {
                 SettingsToggle(isOn: alertPrefs.enabled) {
                     // withAnimation here so the threshold rows + Preview row
@@ -594,12 +600,30 @@ struct SettingsView: View {
     /// A field changes several times while the user types a URL/path. Wait
     /// until it settles before one status-only refresh. If another refresh is
     /// still running, `UsageStore` coalesces this into one follow-up pass.
-    private func queueCLIStatusRefresh() {
-        cliRefreshTask?.cancel()
-        cliRefreshTask = Task { @MainActor in
+    private func queueClaudeStatusRefresh() {
+        claudeRefreshTask?.cancel()
+        claudeRefreshTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 700_000_000)
             guard !Task.isCancelled else { return }
             usage.refresh()
+        }
+    }
+
+    private func queueCodexStatusRefresh() {
+        codexRefreshTask?.cancel()
+        codexRefreshTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled else { return }
+            usage.refreshCodexForConfiguredProfiles()
+            cost.refreshCodexForConfiguredProfiles()
+        }
+    }
+
+    private func queueCodexCostRefresh() {
+        codexCostRefreshTask?.cancel()
+        codexCostRefreshTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
             cost.refreshCodexForConfiguredProfiles()
         }
     }
@@ -653,7 +677,7 @@ struct SettingsView: View {
                             .foregroundStyle(.white.opacity(0.50))
                             .lineLimit(1)
                         Spacer(minLength: 4)
-                        Text("\(Int((window.usedPercent * 100).rounded()))%")
+                        Text(quotaPercent(window.usedPercent))
                             .font(Typography.caption)
                             .foregroundStyle(.white.opacity(0.72))
                         if let reset = window.resetAt {
@@ -973,6 +997,11 @@ struct SettingsView: View {
     }
 
     // MARK: - Subtitle composition
+
+    private func quotaPercent(_ used: Double) -> String {
+        let fraction = usageDisplay.mode == .remaining ? 1 - used : used
+        return "\(L10n.tr(usageDisplay.mode.label)) \(Int((fraction * 100).rounded()))%"
+    }
 
     private func providerSubtitle(_ u: AppUsage) -> String {
         let synced: String = {

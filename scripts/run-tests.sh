@@ -36,8 +36,10 @@ swiftc \
   Sources/Model/ProviderVisibilityStore.swift \
   Sources/Model/AlertThresholdStore.swift \
   Sources/Model/UsageDisplayModeStore.swift \
+  Sources/Model/QuotaWindowPreferenceStore.swift \
   Sources/Model/CLIProviderConfig.swift \
   Sources/Usage/AppUsage.swift \
+  Sources/Usage/CompactQuotaSelection.swift \
   Sources/Usage/CLIStatusProbe.swift \
   Sources/Usage/UsageFetcher.swift \
   Sources/Usage/CodexHeadlineSelection.swift \

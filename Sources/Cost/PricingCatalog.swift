@@ -73,7 +73,26 @@ enum PricingCatalog {
             return .rejected("unsupported schemaVersion \(payload.schemaVersion)")
         }
         guard !payload.models.isEmpty else { return .rejected("empty catalog") }
+        guard isValidPayload(payload) else { return .rejected("invalid model rates") }
         return .payload(payload)
+    }
+
+    private static func isValidPayload(_ payload: CatalogPayload) -> Bool {
+        !payload.models.isEmpty && payload.models.allSatisfy({ element in
+            let (key, rates) = element
+            return !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && validRate(rates.inputPerMillion)
+                && validRate(rates.outputPerMillion)
+                && validRate(rates.cacheCreationPerMillion)
+                && validRate(rates.cacheReadPerMillion)
+        })
+    }
+
+    /// Reject negative, non-finite, and implausibly large remote prices before
+    /// they can corrupt every cached project total. The upper bound is far
+    /// above current premium-model pricing while still containing accidents.
+    private static func validRate(_ value: Double) -> Bool {
+        value.isFinite && (0...10_000).contains(value)
     }
 
     private static let refreshInterval: TimeInterval = 24 * 60 * 60
@@ -119,7 +138,7 @@ enum PricingCatalog {
               let data = try? Data(contentsOf: url),
               let cached = try? JSONDecoder().decode(CachedCatalog.self, from: data),
               cached.payload.schemaVersion == supportedSchemaVersion,
-              !cached.payload.models.isEmpty
+              isValidPayload(cached.payload)
         else { return }
         storedETag = cached.etag
         install(models: cached.payload.models, fetchedAt: cached.fetchedAt)

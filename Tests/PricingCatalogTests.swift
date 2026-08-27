@@ -51,6 +51,12 @@ struct PricingCatalogTests {
             ("empty catalog", PricingCatalog.interpret(
                 status: 200,
                 data: json(#"{"schemaVersion":1,"generatedAt":"x","models":{}}"#))),
+            ("negative price", PricingCatalog.interpret(
+                status: 200,
+                data: json(#"{"schemaVersion":1,"generatedAt":"x","models":{"bad":{"inputPerMillion":-1,"outputPerMillion":1,"cacheCreationPerMillion":1,"cacheReadPerMillion":1}}}"#))),
+            ("implausible price", PricingCatalog.interpret(
+                status: 200,
+                data: json(#"{"schemaVersion":1,"generatedAt":"x","models":{"bad":{"inputPerMillion":1,"outputPerMillion":10001,"cacheCreationPerMillion":1,"cacheReadPerMillion":1}}}"#))),
         ]
         for (label, result) in rejects {
             if case .rejected = result { print("PASS rejects \(label)") }
@@ -203,6 +209,17 @@ struct PricingCatalogTests {
         PricingCatalog.loadFromDisk(from: tmp)
         expect(PricingCatalog.rates(for: "claude-opus-4-8")?.inputPerMillion == 5,
                "empty-model cache is ignored, previous state survives")
+
+        PricingCatalog.persist(
+            CatalogPayload(schemaVersion: 1, generatedAt: "x", models: [
+                "bad": CatalogRates(
+                    displayName: nil, inputPerMillion: -1, outputPerMillion: 1,
+                    cacheCreationPerMillion: 1, cacheReadPerMillion: 1)
+            ]),
+            etag: nil, at: base, to: tmp)
+        PricingCatalog.loadFromDisk(from: tmp)
+        expect(PricingCatalog.rates(for: "claude-opus-4-8")?.inputPerMillion == 5,
+               "invalid-rate cache is ignored, previous state survives")
 
         // Same for a file that is not JSON at all.
         try? Data("not json".utf8).write(to: tmp)

@@ -8,6 +8,7 @@ struct IslandRootView: View {
     @State private var contentVisible = false
     @State private var pillsVisible = false
     @State private var pulseToken: UUID?
+    @State private var menuTracking = false
 
     /// Image decode from disk is ~150µs per call. Computed properties
     /// re-decoded both logos every render — inside a 120Hz TimelineView
@@ -190,44 +191,13 @@ struct IslandRootView: View {
                             }
                         }
                     } else {
-                        // EXIT: pills fade first (unless we're pinning peek),
-                        // then the shape settles at the rest state — `.compact`
-                        // normally, `.peek` under always-show.
-                        if !alwaysShow.enabled {
-                            withAnimation(.easeOut(duration: 0.08)) {
-                                pillsVisible = false
-                            }
-                        }
-                        withAnimation(.easeOut(duration: 0.10)) {
-                            contentVisible = false
-                        }
-                        // Start the shape morph after only 20ms — overlapping
-                        // with the content fade — so the silhouette begins
-                        // shrinking while the content is still fading out.
-                        // The original 100ms wait caused a visible "flash black"
-                        // because the full-size black shape was exposed for the
-                        // entire fade before the closeMorph fired.
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
-                            guard !hovering else { return }
-                            // Re-read restState here — the user may have flipped
-                            // the always-show toggle during the 20ms wait, and
-                            // a captured-at-creation-time `target` would settle
-                            // at the wrong state for them.
-                            let target = restState
-                            if model.state != target {
-                                withAnimation(.closeMorph) {
-                                    model.setState(target)
-                                }
-                            }
-                            // Coming out of `.expanded` under always-show, the
-                            // pills were hidden by the open-panel branch — bring
-                            // them back as the shape resettles at peek.
-                            if alwaysShow.enabled && !pillsVisible {
-                                withAnimation(.easeOut(duration: 0.18)) {
-                                    pillsVisible = true
-                                }
-                            }
-                        }
+                        // A SwiftUI Menu is hosted by a separate NSMenu
+                        // window. Moving into it reports hover=false for the
+                        // island; do not fade or collapse while that menu is
+                        // tracking, or profile selection becomes a black
+                        // flash followed by a shrunken panel.
+                        guard !menuTracking else { return }
+                        handleHoverExit()
                     }
                 }
             Spacer(minLength: 0)
@@ -297,6 +267,46 @@ struct IslandRootView: View {
             // re-trigger; the engine writes a fresh PulseEvent for each new
             // crossing tick.
             AlertEngine.shared.pulseEvent = nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in
+            menuTracking = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSMenu.didEndTrackingNotification)) { _ in
+            menuTracking = false
+            // Let AppKit deliver the post-menu mouse-enter event first. If
+            // the pointer lands back over the island, keep the freshly
+            // selected profile visible; otherwise close normally.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                guard !hovering, !menuTracking else { return }
+                handleHoverExit()
+            }
+        }
+    }
+
+    private func handleHoverExit() {
+        // EXIT: pills fade first (unless we're pinning peek), then the shape
+        // settles at the configured rest state.
+        if !alwaysShow.enabled {
+            withAnimation(.easeOut(duration: 0.08)) {
+                pillsVisible = false
+            }
+        }
+        withAnimation(.easeOut(duration: 0.10)) {
+            contentVisible = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+            guard !hovering, !menuTracking else { return }
+            let target = restState
+            if model.state != target {
+                withAnimation(.closeMorph) {
+                    model.setState(target)
+                }
+            }
+            if alwaysShow.enabled && !pillsVisible {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    pillsVisible = true
+                }
+            }
         }
     }
 

@@ -158,6 +158,7 @@ struct PanelHeader: View {
         }
         .font(Typography.micro)
         .foregroundStyle(.white.opacity(0.52))
+        .frame(width: 122, alignment: .trailing)
         .contentShape(Rectangle())
     }
 

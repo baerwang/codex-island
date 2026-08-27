@@ -9,8 +9,8 @@ import Combine
 /// Per-provider loading flags drive parallel scans that commit independently
 /// — Codex (small) appears within ~50ms while Claude (often 20k+ events)
 /// continues to scan in the background. Last-known totals are cached to
-/// UserDefaults so the first hover after launch shows yesterday's snapshot
-/// instantly rather than zeros.
+/// UserDefaults so the first hover after launch can show a same-day snapshot
+/// instantly; stale today/month windows are cleared at calendar boundaries.
 @MainActor
 final class CostStore: ObservableObject {
     static let shared = CostStore()
@@ -21,12 +21,14 @@ final class CostStore: ObservableObject {
     @Published var claudeLoading = false
     @Published var codexLoading = false
     @Published var lastUpdated: Date?
+    @Published private(set) var claudeLastUpdated: Date?
+    @Published private(set) var codexLastUpdated: Date?
 
     var loading: Bool { claudeLoading || codexLoading }
 
-    /// v9 keeps daily history separated by Codex profile. v8 aggregated those
-    /// buckets and cannot support account-selected overview filtering.
-    private static let cacheKey = "MacIsland.costCache.v9"
+    /// v10 timestamps Claude and Codex independently so one completed scan
+    /// cannot make stale data from the other provider look current.
+    private static let cacheKey = "MacIsland.costCache.v10"
     private static let cacheEncoder = JSONEncoder()
     private static let cacheDecoder = JSONDecoder()
     private var pollTimer: Timer?
@@ -141,7 +143,8 @@ final class CostStore: ObservableObject {
     private func commitClaude(_ cost: ProviderCost) {
         self.claude = cost
         self.claudeLoading = false
-        self.lastUpdated = Date()
+        self.claudeLastUpdated = Date()
+        updateCombinedTimestamp()
         persist()
     }
 
@@ -165,11 +168,21 @@ final class CostStore: ObservableObject {
             in: CLIProviderConfigStore.shared.activeCodexProfiles
         )
         self.codexLoading = false
-        self.lastUpdated = Date()
+        self.codexLastUpdated = Date()
+        updateCombinedTimestamp()
         persist()
         if codexRefreshPending {
             codexRefreshPending = false
             refreshCodexForConfiguredProfiles()
+        }
+    }
+
+    private func updateCombinedTimestamp() {
+        switch (claudeLastUpdated, codexLastUpdated) {
+        case let (claude?, codex?): lastUpdated = min(claude, codex)
+        case let (claude?, nil): lastUpdated = claude
+        case let (nil, codex?): lastUpdated = codex
+        case (nil, nil): lastUpdated = nil
         }
     }
 
@@ -254,7 +267,10 @@ final class CostStore: ObservableObject {
                 175, 188, 201, 214, 228, 239, 254, 268, 282, 164,
             ], millionScale: 1_000_000)
         )
-        self.lastUpdated = Date()
+        let now = Date()
+        self.claudeLastUpdated = now
+        self.codexLastUpdated = now
+        updateCombinedTimestamp()
     }
 
     private static func demoDailyBuckets(
@@ -303,7 +319,8 @@ final class CostStore: ObservableObject {
         var codexMonthUnknown: [String] = []
         var claudeDailyTokens: [DailyTokenBucket]
         var codexDailyTokens: [DailyTokenBucket]
-        var lastUpdated: Date?
+        var claudeLastUpdated: Date?
+        var codexLastUpdated: Date?
     }
 
     /// Encodes the full snapshot as a single Data value — 1 write vs. the
@@ -332,7 +349,8 @@ final class CostStore: ObservableObject {
             codexMonthUnknown: codex.month.unknownModels,
             claudeDailyTokens: claude.dailyTokens,
             codexDailyTokens: codex.dailyTokens,
-            lastUpdated: lastUpdated
+            claudeLastUpdated: claudeLastUpdated,
+            codexLastUpdated: codexLastUpdated
         )
         if let data = try? Self.cacheEncoder.encode(snap) {
             UserDefaults.standard.set(data, forKey: Self.cacheKey)
@@ -345,29 +363,66 @@ final class CostStore: ObservableObject {
         else { return }
 
         self.claude = ProviderCost(
-            today: CostWindow(dollars: snap.claudeToday, tokens: snap.claudeTodayTokens,
-                              billableTokens: snap.claudeTodayBillable,
-                              series: snap.claudeTodaySeries, label: "Today", error: nil,
-                              unknownModels: snap.claudeTodayUnknown),
-            month: CostWindow(dollars: snap.claudeMonth, tokens: snap.claudeMonthTokens,
-                              billableTokens: snap.claudeMonthBillable,
-                              series: snap.claudeMonthSeries,
-                              label: CostBucketing.currentMonthLabel(), error: nil,
-                              unknownModels: snap.claudeMonthUnknown),
+            today: restoredWindow(
+                stamp: snap.claudeLastUpdated, period: .today,
+                dollars: snap.claudeToday, tokens: snap.claudeTodayTokens,
+                billableTokens: snap.claudeTodayBillable, series: snap.claudeTodaySeries,
+                unknownModels: snap.claudeTodayUnknown
+            ),
+            month: restoredWindow(
+                stamp: snap.claudeLastUpdated, period: .month,
+                dollars: snap.claudeMonth, tokens: snap.claudeMonthTokens,
+                billableTokens: snap.claudeMonthBillable, series: snap.claudeMonthSeries,
+                unknownModels: snap.claudeMonthUnknown
+            ),
             dailyTokens: snap.claudeDailyTokens
         )
         self.codex = ProviderCost(
-            today: CostWindow(dollars: snap.codexToday, tokens: snap.codexTodayTokens,
-                              billableTokens: snap.codexTodayBillable,
-                              series: snap.codexTodaySeries, label: "Today", error: nil,
-                              unknownModels: snap.codexTodayUnknown),
-            month: CostWindow(dollars: snap.codexMonth, tokens: snap.codexMonthTokens,
-                              billableTokens: snap.codexMonthBillable,
-                              series: snap.codexMonthSeries,
-                              label: CostBucketing.currentMonthLabel(), error: nil,
-                              unknownModels: snap.codexMonthUnknown),
+            today: restoredWindow(
+                stamp: snap.codexLastUpdated, period: .today,
+                dollars: snap.codexToday, tokens: snap.codexTodayTokens,
+                billableTokens: snap.codexTodayBillable, series: snap.codexTodaySeries,
+                unknownModels: snap.codexTodayUnknown
+            ),
+            month: restoredWindow(
+                stamp: snap.codexLastUpdated, period: .month,
+                dollars: snap.codexMonth, tokens: snap.codexMonthTokens,
+                billableTokens: snap.codexMonthBillable, series: snap.codexMonthSeries,
+                unknownModels: snap.codexMonthUnknown
+            ),
             dailyTokens: snap.codexDailyTokens
         )
-        self.lastUpdated = snap.lastUpdated
+        self.claudeLastUpdated = snap.claudeLastUpdated
+        self.codexLastUpdated = snap.codexLastUpdated
+        updateCombinedTimestamp()
+    }
+
+    private enum CachedPeriod { case today, month }
+
+    private func restoredWindow(
+        stamp: Date?, period: CachedPeriod, dollars: Double, tokens: Int,
+        billableTokens: Int, series: [Double], unknownModels: [String]
+    ) -> CostWindow {
+        let now = Date()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let isCurrent: Bool = {
+            guard let stamp else { return false }
+            switch period {
+            case .today: return calendar.isDate(stamp, inSameDayAs: now)
+            case .month:
+                return calendar.dateComponents([.year, .month], from: stamp)
+                    == calendar.dateComponents([.year, .month], from: now)
+            }
+        }()
+        return CostWindow(
+            dollars: isCurrent ? dollars : 0,
+            tokens: isCurrent ? tokens : 0,
+            billableTokens: isCurrent ? billableTokens : 0,
+            series: isCurrent ? series : [],
+            label: period == .today ? "Today" : CostBucketing.currentMonthLabel(),
+            error: nil,
+            unknownModels: isCurrent ? unknownModels : []
+        )
     }
 }

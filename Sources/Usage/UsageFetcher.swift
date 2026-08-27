@@ -87,9 +87,24 @@ enum UsageFetcher {
     }
 
     private static func executable(named name: String) -> String? {
-        for path in ["/opt/homebrew/bin/\(name)", "/usr/local/bin/\(name)", "/usr/bin/\(name)"]
-        where FileManager.default.isExecutableFile(atPath: path) { return path }
-        return nil
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        var candidates = [
+            "/opt/homebrew/bin/\(name)",
+            "/usr/local/bin/\(name)",
+            home.appendingPathComponent(".local/bin/\(name)").path,
+            home.appendingPathComponent(".claude/local/\(name)").path,
+            "/usr/bin/\(name)",
+        ]
+        if let path = ProcessInfo.processInfo.environment["PATH"] {
+            candidates.append(contentsOf: path.split(separator: ":").map {
+                URL(fileURLWithPath: String($0), isDirectory: true)
+                    .appendingPathComponent(name).path
+            })
+        }
+        var seen = Set<String>()
+        return candidates.first {
+            seen.insert($0).inserted && FileManager.default.isExecutableFile(atPath: $0)
+        }
     }
 
     private static func isProxy(_ raw: String) -> Bool {
@@ -129,7 +144,7 @@ enum CLIUsageParser {
         if let plan, isNonSubscriptionPlan(plan) {
             return UsageFetcher.noSubscriptionUsage(plan: plan)
         }
-        // At the moment the Status tab has finished drawing, the first two
+        // At the moment the Usage tab has finished drawing, the first two
         // percent/reset pairs are necessarily current-session then all-model
         // week. This fallback handles Claude redraws that overwrite part of
         // the label while preserving label-first parsing for normal text.
@@ -140,7 +155,7 @@ enum CLIUsageParser {
         guard let session = session ?? ordered.first,
               let weekly = weekly ?? ordered.dropFirst().first
         else {
-            return UsageFetcher.errorPair(timedOut ? "claude timeout" : "status parse error")
+            return UsageFetcher.errorPair(timedOut ? "claude timeout" : "usage parse error")
         }
         var windows = [
             detail(id: "claude.current", label: "Current session", reading: session),

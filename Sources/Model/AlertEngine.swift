@@ -3,8 +3,8 @@ import Combine
 
 /// Drives the approaching-limit alert state. Subscribes to `UsageStore`
 /// publishers + the alert/visibility preference stores, derives a current
-/// severity, and emits one-shot `pulseEvent`s when a tracked 5-hour window
-/// first crosses a threshold inside its current reset cycle.
+/// severity, and emits one-shot `pulseEvent`s when the provider's selected
+/// compact quota window first crosses a threshold inside its reset cycle.
 ///
 /// The threshold-crossing judgment lives in the `AlertDecision` enum below
 /// — a pure namespace with no singletons, Combine, or side effects — so it
@@ -83,6 +83,7 @@ final class AlertEngine: ObservableObject {
             UsageStore.shared.$codex.map { _ in () }.eraseToAnyPublisher(),
             AlertThresholdStore.shared.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
             ProviderVisibilityStore.shared.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
+            QuotaWindowPreferenceStore.shared.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
         ]
 
         Publishers.MergeMany(triggers)
@@ -102,6 +103,7 @@ final class AlertEngine: ObservableObject {
         let store = AlertThresholdStore.shared
         let visibility = ProviderVisibilityStore.shared
         let usage = UsageStore.shared
+        let quotaWindow = QuotaWindowPreferenceStore.shared
 
         let enabled = store.enabled
         let warning = store.warningPercent
@@ -114,20 +116,20 @@ final class AlertEngine: ObservableObject {
             AlertDecision.WindowInput(
                 provider: .claude,
                 visible: visibility.claudeVisible,
-                // Keep alerting aligned with the window the compact island
-                // actually surfaces. Claude normally prefers 5h, but a
-                // status variant that omits it should still be able to warn
-                // on its reported weekly window instead of going silent.
-                window: usage.claude.peekWindow
+                // Alert exactly what the compact island shows. Missing plan
+                // windows use the same real-reading fallback as the pill.
+                window: CompactQuotaSelection.select(
+                    usage: usage.claude,
+                    preferred: quotaWindow.selectedWindow(for: .claude)
+                ).window
             ),
             AlertDecision.WindowInput(
                 provider: .codex,
                 visible: visibility.codexVisible,
-                // peekWindow, not fiveHour: weekly-only Codex plans report no
-                // 5h window, and severity must track the same number the peek
-                // pill and silhouette tint surface. Two-window plans still
-                // alert on 5h (peekWindow prefers it).
-                window: usage.codexHeadlineUsage.peekWindow
+                window: CompactQuotaSelection.select(
+                    usage: usage.codexHeadlineUsage,
+                    preferred: quotaWindow.selectedWindow(for: .codex)
+                ).window
             ),
         ]
 
@@ -164,6 +166,11 @@ final class AlertEngine: ObservableObject {
         // `lastUpdated == nil` and skip the crossing path entirely. The
         // first recompute that sees `lastUpdated != nil` consumes warmup.
         guard usage.lastUpdated != nil else { return }
+        // A completed failed poll updates `lastUpdated` but is not an observed
+        // quota. Do not consume warmup until at least one visible provider has
+        // a real reading; otherwise the first later success can pulse as if it
+        // crossed from a measured lower value.
+        guard AlertDecision.hasVisibleReading(inputs) else { return }
 
         let result = AlertDecision.evaluateCrossings(
             previous: crossings,
@@ -219,6 +226,10 @@ enum AlertDecision {
         let provider: AlertEngine.Provider
         let visible: Bool
         let window: WindowUsage
+    }
+
+    static func hasVisibleReading(_ inputs: [WindowInput]) -> Bool {
+        inputs.contains { $0.visible && $0.window.hasReading }
     }
 
     /// Returns severity per visible window whose percent meets at least the

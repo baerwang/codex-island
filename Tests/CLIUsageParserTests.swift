@@ -208,8 +208,8 @@ struct CLIUsageParserTests {
             "Claude captures one settled status frame before interruption"
         )
         expect(
-            CLIStatusProbe.postStatusCaptureInterval(for: .codex) == 8,
-            "Codex captures after its three planned status attempts"
+            CLIStatusProbe.postStatusCaptureInterval(for: .codex) == 10,
+            "Codex captures one settled status frame before interruption"
         )
 
         // Claude writes its Status tab by moving the cursor around an
