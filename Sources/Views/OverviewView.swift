@@ -8,7 +8,7 @@ struct OverviewView: View {
     @ObservedObject private var screenPref = ScreenPref.shared
     @ObservedObject private var costStore = CostStore.shared
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
-    @ObservedObject private var usageStore = UsageStore.shared
+    @ObservedObject private var codexProfile = CodexCostProfileStore.shared
     @ObservedObject private var cliConfig = CLIProviderConfigStore.shared
     @ObservedObject private var tokenMode = TokenCountModeStore.shared
     @State private var selectedDate: Date?
@@ -23,14 +23,14 @@ struct OverviewView: View {
 
     private var visibleCodexBuckets: [DailyTokenBucket] {
         guard visibility.codexVisible else { return [] }
-        guard let selectedID = usageStore.codexHeadlineProfileID?.uuidString else {
+        guard let selectedID = codexProfile.selectedProfileID?.uuidString else {
             return costStore.codex.dailyTokens
         }
         return costStore.codex.dailyTokens.filter { $0.sourceID == selectedID }
     }
 
     private var selectedCodexProfileName: String? {
-        guard let selectedID = usageStore.codexHeadlineProfileID else { return nil }
+        guard let selectedID = codexProfile.selectedProfileID else { return nil }
         return cliConfig.codexProfiles.first { $0.id == selectedID }?.name
     }
 

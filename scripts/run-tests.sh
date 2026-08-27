@@ -75,6 +75,7 @@ swiftc \
   -o "$OUT_DIR/codex-profile-config-tests" \
   Sources/Model/PreferenceStorage.swift \
   Sources/Model/CLIProviderConfig.swift \
+  Sources/Model/CodexCostProfileStore.swift \
   Tests/CodexProfileConfigTests.swift
 
 "$OUT_DIR/codex-profile-config-tests"

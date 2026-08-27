@@ -13,6 +13,7 @@ struct PanelHeader: View {
     @ObservedObject private var usageStore = UsageStore.shared
     @ObservedObject private var config = CLIProviderConfigStore.shared
     @ObservedObject private var screenPref = ScreenPref.shared
+    @ObservedObject private var costProfile = CodexCostProfileStore.shared
 
     var body: some View {
         HStack(spacing: 0) {
@@ -27,7 +28,7 @@ struct PanelHeader: View {
                 .animation(.openMorph, value: claudeOn)
                 .accessibilityHidden(!claudeOn)
             Color.clear.frame(width: notch.width)
-            providerTitle(name: "Codex", tag: usageStore.codex.plan?.uppercased(),
+            providerTitle(name: "Codex", tag: codexPlanTag,
                           color: IslandColor.codex, alignment: .trailing) {
                 codexProfilePicker
             }
@@ -41,8 +42,25 @@ struct PanelHeader: View {
         .padding(.bottom, min(14, max(0, notch.height - 22 - 4)))
     }
 
+    private var codexPlanTag: String? {
+        if screenPref.screen == .usage {
+            return usageStore.codex.plan?.uppercased()
+        }
+        guard let selectedID = costProfile.selectedProfileID else { return nil }
+        return usageStore.codexByProfile[selectedID]?.plan?.uppercased()
+    }
+
     @ViewBuilder
     private var codexProfilePicker: some View {
+        if screenPref.screen == .usage {
+            quotaProfilePicker
+        } else {
+            consumptionProfilePicker
+        }
+    }
+
+    @ViewBuilder
+    private var quotaProfilePicker: some View {
         let profiles = config.activeCodexProfiles.filter {
             guard let usage = usageStore.codexByProfile[$0.id] else { return false }
             return usage.fiveHour.hasReading || usage.weekly.hasReading
@@ -66,6 +84,36 @@ struct PanelHeader: View {
             .buttonStyle(.plain)
             .help("Current: \(selectedName). Click to switch Codex profile")
             .accessibilityLabel("Codex profile \(selectedIndex + 1) of \(profiles.count). Next profile")
+        }
+    }
+
+    @ViewBuilder
+    private var consumptionProfilePicker: some View {
+        let profiles = config.activeCodexProfiles
+        if !profiles.isEmpty {
+            let selectedIndex = costProfile.selectedProfileID.flatMap { id in
+                profiles.firstIndex(where: { $0.id == id })
+            }
+            let selectedName = selectedIndex.map { profiles[$0].name }
+                ?? L10n.tr("All")
+            Button {
+                costProfile.advance(in: profiles)
+            } label: {
+                HStack(spacing: 3) {
+                    if let selectedIndex {
+                        Text("\(selectedIndex + 1)/\(profiles.count)")
+                    } else {
+                        Text(L10n.tr("All"))
+                    }
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .font(Typography.micro)
+                .foregroundStyle(.white.opacity(0.52))
+            }
+            .buttonStyle(.plain)
+            .help("Current local usage: \(selectedName). Click to switch Codex profile")
+            .accessibilityLabel("Codex local usage profile: \(selectedName)")
         }
     }
 

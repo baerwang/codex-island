@@ -17,6 +17,7 @@ final class CostStore: ObservableObject {
 
     @Published var claude: ProviderCost = .empty
     @Published var codex: ProviderCost = .empty
+    @Published private(set) var codexByProfile: [UUID: ProviderCost] = [:]
     @Published var claudeLoading = false
     @Published var codexLoading = false
     @Published var lastUpdated: Date?
@@ -83,18 +84,22 @@ final class CostStore: ObservableObject {
             codexLoading = true
             Task.detached(priority: .userInitiated) { [weak self] in
                 let openCodeEvents = await openCodeTask?.value ?? []
-                let codexEvents = codexProfiles.flatMap { profile in
-                    CodexLogReader.scan(
+                var codexEvents: [TokenEvent] = []
+                var byProfile: [UUID: ProviderCost] = [:]
+                for profile in codexProfiles {
+                    let profileEvents = CodexLogReader.scan(
                         lookbackDays: days,
                         codexHome: profile.expandedHome,
                         sourceID: profile.id.uuidString,
                         sourceName: profile.name
                     )
+                    codexEvents.append(contentsOf: profileEvents)
+                    byProfile[profile.id] = CostSummary.summarize(events: profileEvents)
                 }
                 let events = codexEvents
                     + openCodeEvents.filter { $0.provider == .codex }
                 let cost = CostSummary.summarize(events: events)
-                await self?.commitCodex(cost)
+                await self?.commitCodex(cost, byProfile: byProfile)
             }
         }
     }
@@ -116,16 +121,20 @@ final class CostStore: ObservableObject {
         codexLoading = true
         Task.detached(priority: .userInitiated) { [weak self] in
             let openCodeEvents = OpenCodeLogReader.scan(lookbackDays: days)
-            let codexEvents = profiles.flatMap { profile in
-                CodexLogReader.scan(
+            var codexEvents: [TokenEvent] = []
+            var byProfile: [UUID: ProviderCost] = [:]
+            for profile in profiles {
+                let profileEvents = CodexLogReader.scan(
                     lookbackDays: days,
                     codexHome: profile.expandedHome,
                     sourceID: profile.id.uuidString,
                     sourceName: profile.name
                 )
+                codexEvents.append(contentsOf: profileEvents)
+                byProfile[profile.id] = CostSummary.summarize(events: profileEvents)
             }
             let cost = CostSummary.summarize(events: codexEvents + openCodeEvents.filter { $0.provider == .codex })
-            await self?.commitCodex(cost)
+            await self?.commitCodex(cost, byProfile: byProfile)
         }
     }
 
@@ -149,8 +158,12 @@ final class CostStore: ObservableObject {
         }
     }
 
-    private func commitCodex(_ cost: ProviderCost) {
+    private func commitCodex(_ cost: ProviderCost, byProfile: [UUID: ProviderCost]) {
         self.codex = cost
+        self.codexByProfile = byProfile
+        CodexCostProfileStore.shared.normalize(
+            in: CLIProviderConfigStore.shared.activeCodexProfiles
+        )
         self.codexLoading = false
         self.lastUpdated = Date()
         persist()
@@ -158,6 +171,11 @@ final class CostStore: ObservableObject {
             codexRefreshPending = false
             refreshCodexForConfiguredProfiles()
         }
+    }
+
+    func codexCost(profileID: UUID?) -> ProviderCost {
+        guard let profileID else { return codex }
+        return codexByProfile[profileID] ?? .empty
     }
 
     func startAutoRefresh() {

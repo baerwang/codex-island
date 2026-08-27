@@ -49,6 +49,7 @@ struct CostTile: View {
     @ObservedObject private var stylePref = CostStylePref.shared
     @ObservedObject private var usageStore = UsageStore.shared
     @ObservedObject private var tokenMode = TokenCountModeStore.shared
+    @ObservedObject private var codexProfile = CodexCostProfileStore.shared
 
     /// Locked to match `ChartTile.tileHeight` so swipe transitions don't
     /// reflow the panel.
@@ -247,7 +248,9 @@ struct CostTile: View {
         let plan: String? = {
             switch provider {
             case .claude: return usageStore.claude.plan?.lowercased()
-            case .codex:  return usageStore.codex.plan?.lowercased()
+            case .codex:
+                guard let selectedID = codexProfile.selectedProfileID else { return nil }
+                return usageStore.codexByProfile[selectedID]?.plan?.lowercased()
             }
         }()
         guard let plan else { return nil }
@@ -264,7 +267,9 @@ struct CostTile: View {
         let plan: String? = {
             switch provider {
             case .claude: return usageStore.claude.plan?.lowercased()
-            case .codex:  return usageStore.codex.plan?.lowercased()
+            case .codex:
+                guard let selectedID = codexProfile.selectedProfileID else { return nil }
+                return usageStore.codexByProfile[selectedID]?.plan?.lowercased()
             }
         }()
         guard let plan else { return nil }

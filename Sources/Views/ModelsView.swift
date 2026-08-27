@@ -6,6 +6,7 @@ import SwiftUI
 struct ModelsView: View {
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
     @ObservedObject private var usage = UsageStore.shared
+    @ObservedObject private var codexProfile = CodexCostProfileStore.shared
 
     var body: some View {
         HStack(spacing: 0) {
@@ -44,7 +45,9 @@ struct ModelsView: View {
         let windows: [ProviderQuotaWindow] = {
             switch provider {
             case .claude: return usage.claude.windows
-            case .codex:  return usage.codex.windows
+            case .codex:
+                guard let selectedID = codexProfile.selectedProfileID else { return [] }
+                return usage.codexByProfile[selectedID]?.windows ?? []
             }
         }()
         let weekly = windows.filter { $0.id.contains("week") }

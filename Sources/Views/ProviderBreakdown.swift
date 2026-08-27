@@ -67,22 +67,6 @@ private func providerLowerLabel(_ provider: AlertEngine.Provider) -> String {
     }
 }
 
-@MainActor
-private func recentRows(for provider: AlertEngine.Provider, store: CostStore) -> [ModelUsageRow] {
-    switch provider {
-    case .claude: return store.claude.recentByModel
-    case .codex:  return store.codex.recentByModel
-    }
-}
-
-@MainActor
-private func weekRowsList(for provider: AlertEngine.Provider, store: CostStore) -> [ModelUsageRow] {
-    switch provider {
-    case .claude: return store.claude.weekByModel
-    case .codex:  return store.codex.weekByModel
-    }
-}
-
 // MARK: - Joined row (one model, two windows)
 
 /// One model's data across both windows. `recent` is `nil` when the model
@@ -141,10 +125,9 @@ private struct JoinedModelRow {
     }
 }
 
-@MainActor
-private func joinedRows(for provider: AlertEngine.Provider, store: CostStore) -> [JoinedModelRow] {
-    let week = weekRowsList(for: provider, store: store)
-    let recent = recentRows(for: provider, store: store)
+private func joinedRows(cost: ProviderCost) -> [JoinedModelRow] {
+    let week = cost.weekByModel
+    let recent = cost.recentByModel
     let recentMap = Dictionary(uniqueKeysWithValues: recent.map { ($0.model, $0) })
     return week.map { w in
         JoinedModelRow(
@@ -165,8 +148,17 @@ struct PerModelBreakdown: View {
     let metric: Metric
 
     @ObservedObject private var costStore = CostStore.shared
+    @ObservedObject private var codexProfile = CodexCostProfileStore.shared
 
     private var color: Color { providerBrandColor(provider) }
+
+    private var providerCost: ProviderCost {
+        switch provider {
+        case .claude: return costStore.claude
+        case .codex:
+            return costStore.codexCost(profileID: codexProfile.selectedProfileID)
+        }
+    }
 
     /// Joined rows, sorted by the chosen metric within the week window
     /// (week is the bigger sample so it's the more stable rank), trimmed
@@ -174,7 +166,7 @@ struct PerModelBreakdown: View {
     /// token-sorted so .tokens metric needs no resort; dollars metric
     /// re-sorts by week-dollar.
     private var rows: [JoinedModelRow] {
-        let joined = joinedRows(for: provider, store: costStore)
+        let joined = joinedRows(cost: providerCost)
         let sorted: [JoinedModelRow] = {
             switch metric {
             case .tokens:

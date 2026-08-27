@@ -14,6 +14,11 @@ struct CostView: View {
     @ObservedObject private var store = CostStore.shared
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
     @ObservedObject private var stylePref = CostStylePref.shared
+    @ObservedObject private var codexProfile = CodexCostProfileStore.shared
+
+    private var visibleCodexCost: ProviderCost {
+        store.codexCost(profileID: codexProfile.selectedProfileID)
+    }
 
     var body: some View {
         let claudeOn = visibility.claudeVisible
@@ -26,7 +31,7 @@ struct CostView: View {
                           loading: store.claudeLoading, provider: .claude,
                           centerWhenSingle: false)
                 hairline
-                CostBlock(color: IslandColor.codex, cost: store.codex,
+                CostBlock(color: IslandColor.codex, cost: visibleCodexCost,
                           loading: store.codexLoading, provider: .codex,
                           centerWhenSingle: false)
             case (true, false):
@@ -44,7 +49,7 @@ struct CostView: View {
                     .padding(.horizontal, 12)
                     .transition(breakdownTransition)
                 hairline
-                CostBlock(color: IslandColor.codex, cost: store.codex,
+                CostBlock(color: IslandColor.codex, cost: visibleCodexCost,
                           loading: store.codexLoading, provider: .codex,
                           centerWhenSingle: true)
             case (false, false):
