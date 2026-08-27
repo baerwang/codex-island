@@ -9,6 +9,14 @@ enum CLIStatusProbe {
     enum Command { case status, usage }
 
     private static let activeProcessLock = NSLock()
+    /// Keep a continuously redrawing TUI from monopolizing the probe loop.
+    /// The deadline and child-exit checks run once per bounded read batch.
+    private static let maximumReadBytesPerIteration = 64 * 1_024
+    /// A status frame is tiny compared with this rolling window. Bounding it
+    /// prevents a noisy CLI from making each terminal render progressively
+    /// more expensive for the entire lifetime of the probe.
+    private static let maximumTranscriptBytes = 1_024 * 1_024
+    private static let statusDetectionInterval: TimeInterval = 0.5
     /// Process-group leaders created by this app's own PTY probes. This is
     /// deliberately separate from all user terminals, so shutdown cleanup
     /// can never touch an interactive Claude/Codex session the user started.
@@ -56,11 +64,16 @@ enum CLIStatusProbe {
     }
 
     static func run(_ request: Request) async -> Transcript {
-        await withCheckedContinuation { continuation in
+        let transcript = await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 continuation.resume(returning: runSync(request))
             }
         }
+        // Concurrent probes can finish close together. Opportunistically reap
+        // every exited app child after a continuation resumes; individual
+        // probe loops treat ECHILD as "already reaped" below.
+        reapAllExitedChildren()
+        return transcript
     }
 
     private static func runSync(_ request: Request) -> Transcript {
@@ -93,6 +106,7 @@ enum CLIStatusProbe {
         var cursorQueryTail = Data()
         var acceptedStatusWorkspaceTrust = false
         var sawSettledCodexStatus = false
+        var nextStatusDetectionAt = started
         // Codex's prompt occasionally accepts the first command before its
         // composer is ready. Retry in the SAME PTY at most three times, but
         // stop immediately once a recognizable status frame appears.
@@ -104,7 +118,7 @@ enum CLIStatusProbe {
             let bytes = readAvailable(master)
             if !bytes.isEmpty {
                 lastOutputAt = now
-                raw.append(bytes)
+                appendToTranscript(bytes, transcript: &raw)
                 cursorQueryTail.append(bytes)
                 if cursorQueryTail.count > 32 { cursorQueryTail.removeFirst(cursorQueryTail.count - 32) }
                 if cursorQueryTail.range(of: Data([0x1B, 0x5B, 0x36, 0x6E])) != nil {
@@ -127,9 +141,16 @@ enum CLIStatusProbe {
                     }
                     if commandsSent > 0,
                        !sawSettledCodexStatus,
-                       codexStatusFrameDetected(in: terminalText(raw)) {
-                        sawSettledCodexStatus = true
-                        captureUntil = now.addingTimeInterval(postStatusCaptureInterval(for: .codex))
+                       now >= nextStatusDetectionAt {
+                        let detected = codexStatusFrameDetected(in: terminalText(raw))
+                        let detectedAt = Date()
+                        nextStatusDetectionAt = detectedAt.addingTimeInterval(statusDetectionInterval)
+                        if detected {
+                            sawSettledCodexStatus = true
+                            captureUntil = detectedAt.addingTimeInterval(
+                                postStatusCaptureInterval(for: .codex)
+                            )
+                        }
                     }
                 }
             }
@@ -158,7 +179,8 @@ enum CLIStatusProbe {
             }
 
             var status: Int32 = 0
-            childExited = waitpid(pid, &status, WNOHANG) == pid
+            let waitResult = waitpid(pid, &status, WNOHANG)
+            childExited = waitResult == pid || (waitResult < 0 && errno == ECHILD)
             // The status screens are persistent TUIs, so waiting for their
             // process to exit always reaches the hard timeout. After the last
             // planned command, retain a bounded quiet capture window, then
@@ -179,6 +201,7 @@ enum CLIStatusProbe {
             usleep(50_000)
         }
         close(master)
+        reapAfterClosingPTY(pid)
         return Transcript(text: terminalText(raw), raw: raw, timedOut: timedOut)
     }
 
@@ -269,19 +292,49 @@ enum CLIStatusProbe {
         if master >= 0 {
             write(master, Data([0x03]))
             usleep(400_000)
-            if waitpid(pid, &status, WNOHANG) == pid { return }
+            let result = waitpid(pid, &status, WNOHANG)
+            if result == pid || (result < 0 && errno == ECHILD) { return }
         }
         for signal in [SIGINT, SIGTERM] {
             kill(-pid, signal)
             usleep(400_000)
-            if waitpid(pid, &status, WNOHANG) == pid { return }
+            let result = waitpid(pid, &status, WNOHANG)
+            if result == pid || (result < 0 && errno == ECHILD) { return }
         }
         kill(-pid, SIGKILL)
         kill(pid, SIGKILL) // Fallback if a terminal implementation changed pgrp.
         let reapDeadline = Date().addingTimeInterval(1)
         while Date() < reapDeadline {
-            if waitpid(pid, &status, WNOHANG) == pid { return }
+            let result = waitpid(pid, &status, WNOHANG)
+            if result == pid || (result < 0 && errno == ECHILD) { return }
             usleep(50_000)
+        }
+    }
+
+    private static func reapAllExitedChildren() {
+        var status: Int32 = 0
+        while true {
+            let result = waitpid(-1, &status, WNOHANG)
+            if result > 0 { continue }
+            if result < 0, errno == EINTR { continue }
+            return
+        }
+    }
+
+    /// Closing the PTY can make a stubborn CLI exit just after the bounded
+    /// termination loop gives up. Take one final non-blocking reap window so
+    /// repeated refreshes cannot accumulate zombie children in the app.
+    private static func reapAfterClosingPTY(_ pid: Int32) {
+        var status: Int32 = 0
+        let deadline = Date().addingTimeInterval(1)
+        while Date() < deadline {
+            let result = waitpid(pid, &status, WNOHANG)
+            if result == pid { return }
+            if result < 0 {
+                if errno == EINTR { continue }
+                return
+            }
+            usleep(25_000)
         }
     }
 
@@ -336,11 +389,30 @@ enum CLIStatusProbe {
     private static func readAvailable(_ fd: Int32) -> Data {
         var out = Data()
         var buffer = [UInt8](repeating: 0, count: 4096)
-        while true {
-            let count = Darwin.read(fd, &buffer, buffer.count)
-            if count > 0 { out.append(buffer, count: Int(count)) } else { break }
+        while out.count < maximumReadBytesPerIteration {
+            let remaining = maximumReadBytesPerIteration - out.count
+            let count = buffer.withUnsafeMutableBytes { bytes in
+                Darwin.read(fd, bytes.baseAddress, min(bytes.count, remaining))
+            }
+            if count > 0 {
+                out.append(contentsOf: buffer.prefix(Int(count)))
+            } else if count < 0, errno == EINTR {
+                continue
+            } else {
+                break
+            }
         }
         return out
+    }
+
+    private static func appendToTranscript(_ bytes: Data, transcript: inout Data) {
+        if bytes.count >= maximumTranscriptBytes {
+            transcript = Data(bytes.suffix(maximumTranscriptBytes))
+            return
+        }
+        let overflow = transcript.count + bytes.count - maximumTranscriptBytes
+        if overflow > 0 { transcript.removeFirst(overflow) }
+        transcript.append(bytes)
     }
 
     private static func write(_ fd: Int32, _ data: Data) {
@@ -385,7 +457,15 @@ enum CLIStatusProbe {
                 if introducer == 0x5B { // CSI
                     var end = index + 2
                     while end < bytes.count, !(0x40...0x7E).contains(bytes[end]) { end += 1 }
-                    guard end < bytes.count else { break }
+                    // A PTY read can end between the CSI introducer and its
+                    // final byte. There is nothing more to render, and most
+                    // importantly the input index must advance; a plain
+                    // `break` here only exits the switch and loops forever on
+                    // the same ESC byte.
+                    guard end < bytes.count else {
+                        index = bytes.count
+                        continue
+                    }
                     let parameters = String(decoding: bytes[(index + 2)..<end], as: UTF8.self)
                     let command = bytes[end]
                     if command == 0x68 || command == 0x6C, parameters.contains("?1049") {
@@ -458,6 +538,12 @@ enum CLIStatusProbe {
         )
         value = value.replacingOccurrences(
             of: "\\x1B\\[[0-?]*[ -/]*[@-~]", with: "", options: .regularExpression
+        )
+        // Drop a CSI sequence cut off at the end of the captured transcript.
+        // The complete-sequence expression above intentionally cannot match
+        // it, but exposing raw escape bytes is never useful parser input.
+        value = value.replacingOccurrences(
+            of: "\\x1B\\[[0-?]*[ -/]*$", with: "", options: .regularExpression
         )
         return value.replacingOccurrences(of: "\r", with: "\n")
     }

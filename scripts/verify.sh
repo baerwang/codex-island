@@ -9,7 +9,10 @@ cd "$(dirname "$0")/.."
 ./build.sh
 
 BIN="./build/CodexIsland.app/Contents/MacOS/CodexIsland"
-"$BIN" >/dev/null 2>&1 &
+# A one-second smoke launch must not start real PTY status sessions: the shell
+# terminates the app before AppKit can reliably run applicationWillTerminate,
+# which otherwise leaves Claude/Codex children orphaned under launchd.
+CODEXISLAND_DEMO=1 "$BIN" >/dev/null 2>&1 &
 PID=$!
 sleep 1
 if kill -0 "$PID" 2>/dev/null; then

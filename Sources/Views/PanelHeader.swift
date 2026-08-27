@@ -14,6 +14,8 @@ struct PanelHeader: View {
     @ObservedObject private var config = CLIProviderConfigStore.shared
     @ObservedObject private var screenPref = ScreenPref.shared
     @ObservedObject private var costProfile = CodexCostProfileStore.shared
+    @State private var profilePickerVisible = false
+    @State private var profileRevealToken = UUID()
 
     var body: some View {
         HStack(spacing: 0) {
@@ -30,7 +32,7 @@ struct PanelHeader: View {
             Color.clear.frame(width: notch.width)
             providerTitle(name: "Codex", tag: codexPlanTag,
                           color: IslandColor.codex, alignment: .trailing) {
-                codexProfilePicker
+                codexProfileSlot
             }
                 .opacity(codexOn ? 1 : 0)
                 .animation(.openMorph, value: codexOn)
@@ -40,61 +42,46 @@ struct PanelHeader: View {
         .padding(.horizontal, 16)
         .padding(.top, 4)
         .padding(.bottom, min(14, max(0, notch.height - 22 - 4)))
+        .onAppear {
+            profilePickerVisible = screenPref.screen == .overview
+        }
+        .onChange(of: screenPref.screen) { screen in
+            updateProfilePicker(for: screen)
+        }
     }
 
     private var codexPlanTag: String? {
-        if screenPref.screen == .usage {
+        switch screenPref.screen {
+        case .usage:
             return usageStore.codexHeadlineUsage.plan?.uppercased()
+        case .cost, .models:
+            return nil
+        case .overview:
+            guard let selectedID = costProfile.selectedProfileID else { return nil }
+            return usageStore.codexByProfile[selectedID]?.plan?.uppercased()
         }
-        guard let selectedID = costProfile.selectedProfileID else { return nil }
-        return usageStore.codexByProfile[selectedID]?.plan?.uppercased()
     }
 
     @ViewBuilder
-    private var codexProfilePicker: some View {
-        if screenPref.screen == .usage {
-            quotaProfilePicker
-        } else {
+    private var codexProfileSlot: some View {
+        if profilePickerVisible, screenPref.screen == .overview {
             consumptionProfilePicker
         }
     }
 
-    @ViewBuilder
-    private var quotaProfilePicker: some View {
-        let profiles = config.activeCodexProfiles.filter {
-            guard let usage = usageStore.codexByProfile[$0.id] else { return false }
-            return !usage.isNonSubscriptionMode
-        }
-        if profiles.count > 1 {
-            let selectedIndex = profiles.firstIndex {
-                $0.id == usageStore.codexHeadlineProfileID
-            } ?? 0
-            let selectedName = profiles[selectedIndex].name
-            Menu {
-                ForEach(profiles) { profile in
-                    Button {
-                        usageStore.selectCodexProfile(id: profile.id)
-                    } label: {
-                        HStack {
-                            Text(profile.name)
-                            if profile.id == usageStore.codexHeadlineProfileID {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-            } label: {
-                profilePickerLabel(
-                    position: "\(selectedIndex + 1)/\(profiles.count)",
-                    name: selectedName
-                )
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help("Current: \(selectedName). Select Codex profile")
-            .accessibilityLabel(
-                "Codex profile \(selectedName), \(selectedIndex + 1) of \(profiles.count). Select profile"
-            )
+    private func updateProfilePicker(for screen: ScreenPref.Screen) {
+        let token = UUID()
+        profileRevealToken = token
+        profilePickerVisible = false
+        guard screen == .overview else { return }
+
+        // PagedContent takes 0.36s to finish entering Overview. Instantiate
+        // the AppKit-backed Menu only after that transition, rather than
+        // rendering it offscreen where Menu can escape SwiftUI clipping.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) {
+            guard profileRevealToken == token,
+                  screenPref.screen == .overview else { return }
+            profilePickerVisible = true
         }
     }
 

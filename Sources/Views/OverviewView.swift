@@ -26,15 +26,16 @@ struct OverviewView: View {
         guard let selectedID = codexProfile.selectedProfileID else {
             return costStore.codex.dailyTokens
         }
-        return costStore.codexByProfile[selectedID]?.dailyTokens ?? []
+        let sourceID = selectedID.uuidString
+        return costStore.codex.dailyTokens.filter { $0.sourceID == sourceID }
     }
 
     private var selectedProfileHasLocalUsage: Bool {
         guard let selectedID = codexProfile.selectedProfileID else { return true }
-        guard let cost = costStore.codexByProfile[selectedID] else { return false }
-        return !cost.dailyTokens.isEmpty
-            || cost.today.tokens > 0
-            || cost.month.tokens > 0
+        let sourceID = selectedID.uuidString
+        return costStore.codex.dailyTokens.contains {
+            $0.sourceID == sourceID && ($0.tokens > 0 || $0.billableTokens > 0)
+        }
     }
 
     private var selectedCodexProfileName: String? {
@@ -86,8 +87,7 @@ struct OverviewView: View {
                 .overlay(alignment: .center) {
                     if visibility.codexVisible,
                        codexProfile.selectedProfileID != nil,
-                       !selectedProfileHasLocalUsage,
-                       totalTokens == 0 {
+                       !selectedProfileHasLocalUsage {
                         profileEmptyState
                     }
                 }

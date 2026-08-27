@@ -49,7 +49,6 @@ struct CostTile: View {
     @ObservedObject private var stylePref = CostStylePref.shared
     @ObservedObject private var usageStore = UsageStore.shared
     @ObservedObject private var tokenMode = TokenCountModeStore.shared
-    @ObservedObject private var codexProfile = CodexCostProfileStore.shared
 
     /// Locked to match `ChartTile.tileHeight` so swipe transitions don't
     /// reflow the panel.
@@ -245,15 +244,7 @@ struct CostTile: View {
     /// unambiguously. A generic `Max` or `Pro` does not reveal its multiplier,
     /// so we deliberately decline a value comparison instead of guessing.
     private var subscriptionUSD: Double? {
-        let plan: String? = {
-            switch provider {
-            case .claude: return usageStore.claude.plan?.lowercased()
-            case .codex:
-                guard let selectedID = codexProfile.selectedProfileID else { return nil }
-                return usageStore.codexByProfile[selectedID]?.plan?.lowercased()
-            }
-        }()
-        guard let plan else { return nil }
+        guard let plan = activePlan else { return nil }
         switch (provider, plan) {
         case (.claude, "pro"): return 20
         case (.codex, "plus"): return 20
@@ -264,21 +255,22 @@ struct CostTile: View {
     /// Display name of the active plan. Used as the label under the plan
     /// bar so the user always knows what the comparison is anchored to.
     private var planLabel: String? {
-        let plan: String? = {
-            switch provider {
-            case .claude: return usageStore.claude.plan?.lowercased()
-            case .codex:
-                guard let selectedID = codexProfile.selectedProfileID else { return nil }
-                return usageStore.codexByProfile[selectedID]?.plan?.lowercased()
-            }
-        }()
-        guard let plan else { return nil }
+        guard let plan = activePlan else { return nil }
         switch (provider, plan) {
         case (.claude, "pro"): return "Pro"
         case (.claude, "max"): return "Max"
         case (.codex, "plus"): return "Plus"
         case (.codex, "pro"):  return "Pro"
         default: return nil
+        }
+    }
+
+    private var activePlan: String? {
+        switch provider {
+        case .claude:
+            return usageStore.claude.plan?.lowercased()
+        case .codex:
+            return usageStore.codexHeadlineUsage.plan?.lowercased()
         }
     }
 

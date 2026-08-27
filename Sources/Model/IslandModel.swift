@@ -43,12 +43,13 @@ final class IslandModel: ObservableObject {
     /// content sits BELOW the notch line.
     private let expandedBaseContentHeight: CGFloat = 188
 
-    /// Overview reserves the selected-day strip at all times. Keeping the
-    /// page at one fixed height prevents profile changes (or selecting an
-    /// empty day) from repeatedly shrinking and re-expanding the island.
-    private let overviewBaseContentHeight: CGFloat = 296
+    /// Overview needs room for the full-year contribution grid. Keep this
+    /// page-specific so usage/cost preserve their compact original height.
+    private let overviewBaseContentHeight: CGFloat = 244
 
-    private let overviewDetailContentHeight: CGFloat = 0
+    /// Extra room for the overview's selected-day details. Kept below the
+    /// fixed host window height on standard notch/menu-bar sizes.
+    private let overviewDetailContentHeight: CGFloat = 52
 
     /// Detection-pure notch from `NotchInfo.detect`. Kept separate from
     /// `notch` (which has the user's spacing override applied) so

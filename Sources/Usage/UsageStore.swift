@@ -6,17 +6,16 @@ import Combine
 @MainActor
 final class UsageStore: ObservableObject {
     static let shared = UsageStore()
-    private static let preferredCodexProfileKey = "CodexIsland.preferredCodexProfileID"
 
     @Published var claude: AppUsage = .empty
     @Published var codex: AppUsage = .empty
     @Published private(set) var codexByProfile: [UUID: AppUsage] = [:]
     @Published private(set) var codexHeadlineProfileID: UUID?
-    @Published private(set) var preferredCodexProfileID: UUID?
     @Published var lastUpdated: Date?
     @Published private(set) var claudeLastUpdated: Date?
     @Published private(set) var codexLastUpdated: Date?
-    @Published var loading = false
+    @Published private(set) var claudeLoading = false
+    @Published private(set) var codexLoading = false
 
     private var refreshTask: Task<Void, Never>?
     private var pollTimer: Timer?
@@ -25,10 +24,13 @@ final class UsageStore: ObservableObject {
     private var codexRefreshPending = false
     private var activeRefreshID: UUID?
 
-    private init() {
-        preferredCodexProfileID = UserDefaults.standard.string(forKey: Self.preferredCodexProfileKey)
-            .flatMap(UUID.init(uuidString:))
-    }
+    private init() {}
+
+    /// Compatibility surface for callers that only need to know whether any
+    /// quota provider is still in flight. Refresh serialization deliberately
+    /// does not use this value: Claude's secondary `/status` probe may keep
+    /// the refresh task alive after both quota loads have completed.
+    var loading: Bool { claudeLoading || codexLoading }
 
     var codexQuotaSurfaceVisible: Bool {
         !codexHeadlineUsage.isNonSubscriptionMode
@@ -57,7 +59,7 @@ final class UsageStore: ObservableObject {
     }
 
     func refresh() {
-        guard !loading else {
+        guard activeRefreshID == nil else {
             // Settings can settle while a previous CLI session is still
             // running. Coalesce those edits into one follow-up pass rather
             // than silently making the user wait for the next 5-minute tick.
@@ -69,56 +71,67 @@ final class UsageStore: ObservableObject {
             return
         }
 
-        loading = true
         let refreshID = UUID()
         activeRefreshID = refreshID
+        claudeLoading = true
+        codexLoading = true
         refreshTask = Task {
             let profiles = CLIProviderConfigStore.shared.activeCodexProfiles
             let codexWorkdir = CLIProviderConfigStore.statusWorkdir
-            if let preferredCodexProfileID,
-               !profiles.contains(where: { $0.id == preferredCodexProfileID }) {
-                self.preferredCodexProfileID = nil
-                UserDefaults.standard.removeObject(forKey: Self.preferredCodexProfileKey)
-            }
             // Every configured account owns an independent PTY, proxy and
             // CODEX_HOME. Run those bounded status sessions together so one
             // slow/API-only profile never delays another account's quota.
-            async let claudeResult = UsageFetcher.fetchClaude()
-            async let profileReadings = Self.fetchCodexReadings(profiles, workdir: codexWorkdir)
-            let newClaude = await claudeResult
-            guard !Task.isCancelled, activeRefreshID == refreshID else {
-                finishRefresh(id: refreshID)
-                return
-            }
-
-            // Publish Claude quota as soon as `/usage` finishes. It must not
-            // wait for every Codex profile (or Claude's separate Login method
-            // screen) before the island can show real quota numbers.
-            let claudeNow = Date()
-            claude = AppUsage.merged(fetched: newClaude, retaining: claude, at: claudeNow)
-            UsageHistoryStore.shared.record(provider: .claude, usage: newClaude, at: claudeNow)
-            claudeLastUpdated = claudeNow
-            updateCombinedTimestamp()
-
-            let completedProfileReadings = await profileReadings
-            guard !Task.isCancelled, activeRefreshID == refreshID else {
-                finishRefresh(id: refreshID)
-                return
-            }
-
-            applyCodexReadings(completedProfileReadings, profiles: profiles, at: Date())
-
-            // Login method is intentionally secondary: it can update the
-            // badge after quota is visible, and an unavailable Status screen
-            // must never turn a successful Usage screen into a parse error.
-            if newClaude.fiveHour.hasReading || newClaude.weekly.hasReading {
-                let loginMethod = await UsageFetcher.fetchClaudeLoginMethod()
-                guard !Task.isCancelled, activeRefreshID == refreshID else {
-                    finishRefresh(id: refreshID)
-                    return
+            await withTaskGroup(of: FullRefreshResult.self) { group in
+                group.addTask {
+                    .claudeQuota(await UsageFetcher.fetchClaude())
                 }
-                applyClaudeLoginMethod(loginMethod, at: Date())
+                group.addTask {
+                    .codexQuota(await Self.fetchCodexReadings(profiles, workdir: codexWorkdir))
+                }
+
+                for await result in group {
+                    guard !Task.isCancelled, activeRefreshID == refreshID else {
+                        group.cancelAll()
+                        return
+                    }
+
+                    switch result {
+                    case .claudeQuota(let newClaude):
+                        // Publish and clear Claude independently. A slow Codex
+                        // account must not leave the completed Claude surface
+                        // looking as if it were still synchronizing.
+                        let now = Date()
+                        claude = AppUsage.merged(
+                            fetched: newClaude, retaining: claude, at: now
+                        )
+                        UsageHistoryStore.shared.record(
+                            provider: .claude, usage: newClaude, at: now
+                        )
+                        claudeLastUpdated = now
+                        updateCombinedTimestamp()
+                        claudeLoading = false
+
+                        // Login method is secondary metadata. Run it beside
+                        // any remaining Codex work, but never represent it as
+                        // Claude quota loading.
+                        if newClaude.fiveHour.hasReading || newClaude.weekly.hasReading {
+                            group.addTask {
+                                .claudeLoginMethod(
+                                    await UsageFetcher.fetchClaudeLoginMethod()
+                                )
+                            }
+                        }
+
+                    case .codexQuota(let readings):
+                        applyCodexReadings(readings, profiles: profiles, at: Date())
+                        codexLoading = false
+
+                    case .claudeLoginMethod(let method):
+                        applyClaudeLoginMethod(method, at: Date())
+                    }
+                }
             }
+
             finishRefresh(id: refreshID)
         }
     }
@@ -127,7 +140,7 @@ final class UsageStore: ObservableObject {
     /// this when a Codex launch field changes so editing CODEX_HOME/proxy does
     /// not repeatedly open unrelated Claude `/usage` and `/status` sessions.
     func refreshCodexForConfiguredProfiles() {
-        guard !loading else {
+        guard activeRefreshID == nil else {
             codexRefreshPending = true
             return
         }
@@ -136,9 +149,9 @@ final class UsageStore: ObservableObject {
             return
         }
 
-        loading = true
         let refreshID = UUID()
         activeRefreshID = refreshID
+        codexLoading = true
         refreshTask = Task {
             let profiles = CLIProviderConfigStore.shared.activeCodexProfiles
             let readings = await Self.fetchCodexReadings(
@@ -149,18 +162,20 @@ final class UsageStore: ObservableObject {
                 return
             }
             applyCodexReadings(readings, profiles: profiles, at: Date())
+            codexLoading = false
             finishRefresh(id: refreshID)
         }
+    }
+
+    private enum FullRefreshResult {
+        case claudeQuota(AppUsage)
+        case codexQuota([(UUID, AppUsage)])
+        case claudeLoginMethod(String?)
     }
 
     private func applyCodexReadings(
         _ readings: [(UUID, AppUsage)], profiles: [CodexCLIProfile], at now: Date
     ) {
-        if let preferredCodexProfileID,
-           !profiles.contains(where: { $0.id == preferredCodexProfileID }) {
-            self.preferredCodexProfileID = nil
-            UserDefaults.standard.removeObject(forKey: Self.preferredCodexProfileKey)
-        }
         var nextProfiles: [UUID: AppUsage] = [:]
         for (id, fetched) in readings {
             let prior = codexByProfile[id] ?? .empty
@@ -171,7 +186,7 @@ final class UsageStore: ObservableObject {
             codex = UsageFetcher.errorPair("add codex profile")
             codexHeadlineProfileID = nil
         } else if let headline = CodexHeadlineSelection.select(
-            profiles: profiles, readings: nextProfiles, preferredID: preferredCodexProfileID
+            profiles: profiles, readings: nextProfiles
         ) {
             // Quotas from accounts are never combined. The compact island
             // shows one usable manually configured profile; Settings and
@@ -246,7 +261,8 @@ final class UsageStore: ObservableObject {
         guard activeRefreshID == id else { return }
         activeRefreshID = nil
         refreshTask = nil
-        loading = false
+        claudeLoading = false
+        codexLoading = false
         if refreshPending {
             refreshPending = false
             codexRefreshPending = false
@@ -255,18 +271,6 @@ final class UsageStore: ObservableObject {
             codexRefreshPending = false
             refreshCodexForConfiguredProfiles()
         }
-    }
-
-    /// An explicit in-memory profile choice is never an account aggregate and
-    /// is cleared if the profile is removed. It lets the compact island switch
-    /// between manually configured Codex accounts and persists only after the
-    /// user makes that explicit choice (there is no implicit default profile).
-    func selectCodexProfile(id: UUID) {
-        guard let usage = codexByProfile[id] else { return }
-        preferredCodexProfileID = id
-        UserDefaults.standard.set(id.uuidString, forKey: Self.preferredCodexProfileKey)
-        codexHeadlineProfileID = id
-        codex = usage
     }
 
     func startAutoRefresh() {
@@ -293,7 +297,8 @@ final class UsageStore: ObservableObject {
         refreshTask = nil
         CLIStatusProbe.terminateAllActiveProbes()
         activeRefreshID = nil
-        loading = false
+        claudeLoading = false
+        codexLoading = false
     }
 
     private func armTimer() {

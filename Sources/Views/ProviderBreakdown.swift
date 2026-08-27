@@ -148,15 +148,13 @@ struct PerModelBreakdown: View {
     let metric: Metric
 
     @ObservedObject private var costStore = CostStore.shared
-    @ObservedObject private var codexProfile = CodexCostProfileStore.shared
 
     private var color: Color { providerBrandColor(provider) }
 
     private var providerCost: ProviderCost {
         switch provider {
         case .claude: return costStore.claude
-        case .codex:
-            return costStore.codexCost(profileID: codexProfile.selectedProfileID)
+        case .codex: return costStore.codex
         }
     }
 

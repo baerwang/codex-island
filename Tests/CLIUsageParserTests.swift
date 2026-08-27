@@ -269,6 +269,19 @@ struct CLIUsageParserTests {
         expect(parsedClaudeTUI.weekly.percentInt == 35, "cursor-positioned Claude weekly parses")
         expect(parsedClaudeTUI.windows.count == 3, "cursor-positioned Claude keeps all windows")
 
+        expect(
+            CLIStatusProbe.terminalText(Data("\u{1B}[".utf8)).isEmpty,
+            "terminal renderer terminates on a bare incomplete CSI"
+        )
+        expect(
+            CLIStatusProbe.terminalText(Data("\u{1B}[38;5".utf8)).isEmpty,
+            "terminal renderer terminates on a parameterized incomplete CSI"
+        )
+        expect(
+            CLIStatusProbe.terminalText(Data("status ready\u{1B}[12;".utf8)) == "status ready",
+            "terminal renderer preserves text before an incomplete CSI tail"
+        )
+
         // A real Claude redraw can temporarily leave its progress bar over a
         // label and use box drawing for its section rule. The completed Status
         // screen still has three ordered percent/reset pairs; this is the

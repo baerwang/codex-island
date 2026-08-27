@@ -9,6 +9,7 @@ struct IslandRootView: View {
     @State private var pillsVisible = false
     @State private var pulseToken: UUID?
     @State private var menuTracking = false
+    @State private var hoverExitToken = UUID()
 
     /// Image decode from disk is ~150µs per call. Computed properties
     /// re-decoded both logos every render — inside a 120Hz TimelineView
@@ -169,6 +170,8 @@ struct IslandRootView: View {
                 .onHover { h in
                     hovering = h
                     if h {
+                        cancelScheduledHoverExit()
+                        restoreExpandedContentIfNeeded()
                         // Trackpad tap on hover-in. .levelChange is closer to
                         // a volume-key tick than the .generic notification
                         // pattern. No-op if haptics are off.
@@ -191,13 +194,7 @@ struct IslandRootView: View {
                             }
                         }
                     } else {
-                        // A SwiftUI Menu is hosted by a separate NSMenu
-                        // window. Moving into it reports hover=false for the
-                        // island; do not fade or collapse while that menu is
-                        // tracking, or profile selection becomes a black
-                        // flash followed by a shrunken panel.
-                        guard !menuTracking else { return }
-                        handleHoverExit()
+                        scheduleHoverExit()
                     }
                 }
             Spacer(minLength: 0)
@@ -270,20 +267,44 @@ struct IslandRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in
             menuTracking = true
+            cancelScheduledHoverExit()
+            restoreExpandedContentIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSMenu.didEndTrackingNotification)) { _ in
             menuTracking = false
+            restoreExpandedContentIfNeeded()
             // Let AppKit deliver the post-menu mouse-enter event first. If
             // the pointer lands back over the island, keep the freshly
             // selected profile visible; otherwise close normally.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                guard !hovering, !menuTracking else { return }
-                handleHoverExit()
-            }
+            scheduleHoverExit(after: 0.40)
+        }
+    }
+
+    /// Opening an AppKit menu can report hover=false one run-loop turn before
+    /// its tracking notification arrives. Defer the fade until both signals
+    /// agree so selecting a profile cannot expose an empty black island.
+    private func scheduleHoverExit(after delay: TimeInterval = 0.05) {
+        let token = UUID()
+        hoverExitToken = token
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard hoverExitToken == token, !hovering, !menuTracking else { return }
+            handleHoverExit()
+        }
+    }
+
+    private func cancelScheduledHoverExit() {
+        hoverExitToken = UUID()
+    }
+
+    private func restoreExpandedContentIfNeeded() {
+        guard model.state == .expanded, !contentVisible else { return }
+        withAnimation(.strongEaseOut) {
+            contentVisible = true
         }
     }
 
     private func handleHoverExit() {
+        guard !hovering, !menuTracking else { return }
         // EXIT: pills fade first (unless we're pinning peek), then the shape
         // settles at the configured rest state.
         if !alwaysShow.enabled {
@@ -528,7 +549,9 @@ private struct PeekPillOverlay: View {
         let window = currentWindow
         NotchPeekPill(
             usage: window,
-            loading: usageStore.loading,
+            loading: provider == .claude
+                ? usageStore.claudeLoading
+                : usageStore.codexLoading,
             tint: tint,
             alignment: provider == .claude ? .leading : .trailing,
             severity: severity,

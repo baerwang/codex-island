@@ -33,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.removeObject(forKey: "CodexIsland.cli.claudeWorkdir")
         UserDefaults.standard.removeObject(forKey: "CodexIsland.cli.codexWorkdir")
         UserDefaults.standard.removeObject(forKey: "CodexIsland.cli.claudePlanPresentation")
+        // The quota headline is automatic again; discard the retired manual
+        // account override so an older weekly-only choice cannot hide 5H.
+        UserDefaults.standard.removeObject(forKey: "CodexIsland.preferredCodexProfileID")
         // Before any window or store exists: the first cost scan must price
         // against the cached catalog, not fall back to the seed and then
         // silently change its numbers a moment later.

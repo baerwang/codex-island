@@ -119,10 +119,19 @@ struct PanelFooter: View {
 
     private var activeLoading: Bool {
         switch screenPref.screen {
-        case .usage: return usageStore.loading
-        case .models: return usageStore.loading || costStore.loading
+        case .usage: return visibleUsageLoading
+        case .models: return visibleUsageLoading || costStore.loading
         case .cost, .overview: return costStore.loading
         }
+    }
+
+    /// Usage providers finish independently. A hidden or already-completed
+    /// provider must not keep the visible usage page in its syncing state.
+    private var visibleUsageLoading: Bool {
+        var states: [Bool] = []
+        if visibility.claudeVisible { states.append(usageStore.claudeLoading) }
+        if visibility.codexVisible { states.append(usageStore.codexLoading) }
+        return states.isEmpty ? usageStore.loading : states.contains(true)
     }
 
     private var activeLastUpdated: Date? {
