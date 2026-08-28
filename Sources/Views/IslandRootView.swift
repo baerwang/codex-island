@@ -83,6 +83,7 @@ struct IslandRootView: View {
                         image: claudeLogo,
                         color: IslandColor.claude,
                         provider: .claude,
+                        revealed: model.state != .compact,
                         edgePadding: logoEdgePadding,
                         topPadding: max(0, (model.notch.height - 20) / 2)
                     )
@@ -92,6 +93,7 @@ struct IslandRootView: View {
                         image: openaiLogo,
                         color: IslandColor.codex,
                         provider: .codex,
+                        revealed: model.state != .compact,
                         edgePadding: logoEdgePadding,
                         topPadding: max(0, (model.notch.height - 20) / 2)
                     )
@@ -482,17 +484,19 @@ private struct GlowLayer: View {
     }
 }
 
-/// Per-provider brand logo overlay. Observes only ProviderVisibilityStore
-/// so a UsageStore/CostStore tick doesn't re-render the logo image or
-/// re-evaluate its accessibility label.
+/// Per-provider brand logo overlay. LogoVisibilityStore controls only the
+/// fully-resting compact state; percentage peek and expanded modes restore
+/// both images. Provider/status visibility remains the final per-side gate.
 private struct LogoOverlay: View {
     let image: NSImage?
     let color: Color
     let provider: AlertEngine.Provider
+    let revealed: Bool
     let edgePadding: CGFloat
     let topPadding: CGFloat
 
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
+    @ObservedObject private var logoVisibility = LogoVisibilityStore.shared
     @ObservedObject private var usageStore = UsageStore.shared
 
     var body: some View {
@@ -519,8 +523,9 @@ private struct LogoOverlay: View {
     }
 
     private var isVisible: Bool {
-        visibility.effectiveVisible(provider: provider)
-            && (provider != .codex || usageStore.codexQuotaSurfaceVisible)
+        (logoVisibility.visible || revealed)
+            && visibility.effectiveVisible(provider: provider)
+            && (provider != .codex || revealed || usageStore.codexQuotaSurfaceVisible)
     }
 
     private var providerLabel: String {

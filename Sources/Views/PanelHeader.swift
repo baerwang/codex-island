@@ -157,7 +157,8 @@ struct PanelHeader: View {
         alignment: HorizontalAlignment,
         @ViewBuilder accessory: () -> Accessory
     ) -> some View {
-        // Push past where the overlay logo lands: 9 leading + 20 logo + 8 gap.
+        // Expanded mode always restores the logos, even when compact logos
+        // are disabled: 9 leading + 20 logo + 8 gap.
         let logoOffset: CGFloat = 9 + 20 + 8
 
         let content = HStack(spacing: 8) {

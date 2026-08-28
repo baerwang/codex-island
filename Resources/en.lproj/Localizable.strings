@@ -63,6 +63,7 @@
 "Input + output" = "Input + output";
 "Input + output only. Matches Anthropic's claude.ai stats." = "Input + output only. Matches Anthropic's claude.ai stats.";
 "Island width" = "Island width";
+"Island appearance" = "Island appearance";
 "last scan %@" = "last scan %@";
 "Launch at Login" = "Launch at Login";
 "Language" = "Language";
@@ -103,6 +104,8 @@
 "Settings" = "Settings";
 "Switch to %@ (⌘%d)" = "Switch to %@ (⌘%d)";
 "Show on" = "Show on";
+"Side logos" = "Side logos";
+"Hide logos only at rest; percentage preview and expanded mode show them." = "Hide logos only at rest; percentage preview and expanded mode show them.";
 "Sparkline" = "Sparkline";
 "Spacing" = "Spacing";
 "Stepped" = "Stepped";

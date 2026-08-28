@@ -179,8 +179,8 @@ runs as an accessory app with no Dock icon and no menu bar.
 
 - **General:** Launch at Login, 5m/15m/30m refresh interval, app language,
   Always show usage, Low Power Mode, and configurable limit alerts.
-- **Display:** used/remaining percentages, Usage and Cost visualization styles,
-  target display, and island width on non-notched screens.
+- **Display:** side-logo visibility, used/remaining percentages, Usage and Cost
+  visualization styles, target display, and island width on non-notched screens.
 - **Providers:** Claude/Codex visibility and status, token-counting mode, and a
   manual refresh for local cost data.
 

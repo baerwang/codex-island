@@ -23,7 +23,8 @@ final class IslandModel: ObservableObject {
     @Published var notch: NotchInfo
     @Published var edgeBump: EdgeBump?
 
-    /// Side extension that houses each brand logo in compact state.
+    /// Per-side extension that houses each brand logo in compact state.
+    /// Reclaimed entirely when the global logo preference is off.
     let tabWidth: CGFloat = 38
 
     /// Per-side outboard slot that houses the peek-state percentage pill.
@@ -58,15 +59,18 @@ final class IslandModel: ObservableObject {
     private var rawNotch: NotchInfo
     private var activeScreen = ScreenPref.shared.screen
     private var overviewDayDetailVisible = false
+    private var logosVisible: Bool
 
     private var subs: Set<AnyCancellable> = []
 
     init(notch: NotchInfo) {
         self.rawNotch = notch
         self.notch = Self.applyOverride(to: notch, width: IslandSpacingStore.shared.width)
+        self.logosVisible = LogoVisibilityStore.shared.visible
         recomputeSize()
         subscribeToSpacingStore()
         subscribeToScreenPref()
+        subscribeToLogoVisibility()
     }
 
     func setState(_ new: State) {
@@ -179,16 +183,32 @@ final class IslandModel: ObservableObject {
             .store(in: &subs)
     }
 
+    private func subscribeToLogoVisibility() {
+        LogoVisibilityStore.shared.$visible
+            .dropFirst()
+            .sink { [weak self] visible in
+                guard let self else { return }
+                withAnimation(.openMorph) {
+                    self.logosVisible = visible
+                    self.recomputeSize()
+                }
+            }
+            .store(in: &subs)
+    }
+
     private func recomputeSize() {
+        // The preference minimizes only the fully-resting island. Peek shows
+        // the percentage pills, so restore their adjacent brand-logo tabs.
+        let logoWidth = (logosVisible || state != .compact) ? tabWidth * 2 : 0
         switch state {
         case .compact:
             size = CGSize(
-                width: notch.width + tabWidth * 2,
+                width: notch.width + logoWidth,
                 height: notch.height
             )
         case .peek:
             size = CGSize(
-                width: notch.width + tabWidth * 2 + pillSlotWidth * 2,
+                width: notch.width + logoWidth + pillSlotWidth * 2,
                 height: notch.height
             )
         case .expanded:

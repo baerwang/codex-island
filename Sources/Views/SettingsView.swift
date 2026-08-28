@@ -20,6 +20,7 @@ struct SettingsView: View {
     @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
     @ObservedObject private var quotaWindow = QuotaWindowPreferenceStore.shared
     @ObservedObject private var targetDisplay = IslandTargetDisplayStore.shared
+    @ObservedObject private var logoVisibility = LogoVisibilityStore.shared
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @ObservedObject private var usage = UsageStore.shared
     @ObservedObject private var cost = CostStore.shared
@@ -164,6 +165,7 @@ struct SettingsView: View {
 
     private var displayTab: some View {
         VStack(alignment: .leading, spacing: 0) {
+            islandAppearanceSection
             usageDisplaySection
             quotaWindowSection
             chartSection
@@ -819,6 +821,23 @@ struct SettingsView: View {
             ChartStylePicker(selected: $stylePref.style)
                 .padding(.top, 4)
                 .padding(.horizontal, 10)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 18)
+        .padding(.bottom, 14)
+    }
+
+    private var islandAppearanceSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("Island appearance")
+            SettingsRow(
+                title: "Side logos",
+                subtitle: "Hide logos only at rest; percentage preview and expanded mode show them."
+            ) {
+                SettingsToggle(isOn: logoVisibility.visible) {
+                    logoVisibility.visible.toggle()
+                }
+            }
         }
         .padding(.horizontal, 14)
         .padding(.top, 18)

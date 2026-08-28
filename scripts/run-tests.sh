@@ -20,6 +20,24 @@ swiftc \
 
 swiftc \
   -parse-as-library \
+  -framework SwiftUI \
+  -o "$OUT_DIR/logo-visibility-size-tests" \
+  Sources/Localization/L10n.swift \
+  Sources/Model/AppEnvironment.swift \
+  Sources/Model/AppLanguageStore.swift \
+  Sources/Model/IslandSpacingStore.swift \
+  Sources/Model/LogoVisibilityStore.swift \
+  Sources/Model/NotchInfo.swift \
+  Sources/Model/PreferenceStorage.swift \
+  Sources/Model/ScreenPref.swift \
+  Sources/Model/IslandModel.swift \
+  Sources/Theme/Animations.swift \
+  Tests/LogoVisibilitySizeTests.swift
+
+"$OUT_DIR/logo-visibility-size-tests"
+
+swiftc \
+  -parse-as-library \
   -o "$OUT_DIR/usage-merge-tests" \
   Sources/Model/UsageDisplayModeStore.swift \
   Sources/Usage/AppUsage.swift \

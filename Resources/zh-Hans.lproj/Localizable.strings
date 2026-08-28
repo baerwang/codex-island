@@ -63,6 +63,7 @@
 "Input + output" = "输入 + 输出";
 "Input + output only. Matches Anthropic's claude.ai stats." = "只统计输入 + 输出；与 Anthropic 的 claude.ai 统计一致。";
 "Island width" = "岛宽度";
+"Island appearance" = "灵动岛外观";
 "last scan %@" = "上次扫描 %@";
 "Launch at Login" = "登录时启动";
 "Language" = "语言";
@@ -103,6 +104,8 @@
 "Settings" = "设置";
 "Switch to %@ (⌘%d)" = "切换到%@（⌘%d）";
 "Show on" = "显示在";
+"Side logos" = "两侧 Logo";
+"Hide logos only at rest; percentage preview and expanded mode show them." = "仅在静止收起时隐藏；百分比预览和展开态会自动显示。";
 "Sparkline" = "折线";
 "Spacing" = "间距";
 "Stepped" = "阶梯";
