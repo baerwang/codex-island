@@ -608,19 +608,18 @@ private struct ContributionCell: View {
     @ViewBuilder
     private var cellFill: some View {
         let opacity = day.totalTokens > 0 ? intensityScale.opacity(for: day.totalTokens) : 0.035
-        switch day.dominantProvider {
-        case .none:
-            Color.white.opacity(opacity)
-        case .claude:
-            IslandColor.claude.opacity(opacity)
-        case .codex:
-            IslandColor.codex.opacity(opacity)
-        case .mixed:
+        if day.claudeTokens > 0, day.codexTokens > 0 {
             ZStack {
                 IslandColor.codex.opacity(opacity)
                 IslandColor.claude.opacity(opacity)
                     .clipShape(DiagonalProviderSplitShape(share: claudeShare))
             }
+        } else if day.claudeTokens > 0 {
+            IslandColor.claude.opacity(opacity)
+        } else if day.codexTokens > 0 {
+            IslandColor.codex.opacity(opacity)
+        } else {
+            Color.white.opacity(opacity)
         }
     }
 
