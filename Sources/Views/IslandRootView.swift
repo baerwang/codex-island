@@ -84,6 +84,7 @@ struct IslandRootView: View {
                         color: IslandColor.claude,
                         provider: .claude,
                         revealed: model.state != .compact,
+                        expanded: model.state == .expanded,
                         edgePadding: logoEdgePadding,
                         topPadding: max(0, (model.notch.height - 20) / 2)
                     )
@@ -94,6 +95,7 @@ struct IslandRootView: View {
                         color: IslandColor.codex,
                         provider: .codex,
                         revealed: model.state != .compact,
+                        expanded: model.state == .expanded,
                         edgePadding: logoEdgePadding,
                         topPadding: max(0, (model.notch.height - 20) / 2)
                     )
@@ -492,20 +494,20 @@ private struct LogoOverlay: View {
     let color: Color
     let provider: AlertEngine.Provider
     let revealed: Bool
+    let expanded: Bool
     let edgePadding: CGFloat
     let topPadding: CGFloat
 
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
     @ObservedObject private var logoVisibility = LogoVisibilityStore.shared
     @ObservedObject private var usageStore = UsageStore.shared
+    @ObservedObject private var screenPref = ScreenPref.shared
 
     var body: some View {
-        // Hidden providers fully drop out — header / peek pill / chrome
-        // are gated identically. `.opacity(isVisible ? 1 : 0)` keeps the
-        // view in the layout (so other overlays don't reflow) but makes
-        // it invisible, and the explicit `.animation(.openMorph, value:)`
-        // pairs the chrome fade with the panel layout swap when the user
-        // toggles a provider in Settings.
+        // Hidden providers fully drop out. Codex additionally follows quota
+        // visibility in compact/peek and the active expanded page. Keeping
+        // the view in layout avoids reflow; state/settings changes supply the
+        // matching open/close transaction.
         if let image {
             Image(nsImage: image)
                 .resizable()
@@ -516,7 +518,7 @@ private struct LogoOverlay: View {
                 .padding(provider == .claude ? .leading : .trailing, edgePadding)
                 .padding(.top, topPadding)
                 .opacity(isVisible ? 1 : 0)
-                .animation(.openMorph, value: isVisible)
+                .animation(.openMorph, value: codexSurfaceVisible)
                 .accessibilityLabel(isVisible ? providerLabel : L10n.tr("%@ (hidden)", providerLabel))
                 .accessibilityHidden(!isVisible)
         }
@@ -525,7 +527,13 @@ private struct LogoOverlay: View {
     private var isVisible: Bool {
         (logoVisibility.visible || revealed)
             && visibility.effectiveVisible(provider: provider)
-            && (provider != .codex || revealed || usageStore.codexQuotaSurfaceVisible)
+            && codexSurfaceVisible
+    }
+
+    private var codexSurfaceVisible: Bool {
+        guard provider == .codex else { return true }
+        if expanded, screenPref.screen != .usage { return true }
+        return usageStore.codexQuotaSurfaceVisible
     }
 
     private var providerLabel: String {

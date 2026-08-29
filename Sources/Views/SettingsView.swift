@@ -835,7 +835,9 @@ struct SettingsView: View {
                 subtitle: "Hide logos only at rest; percentage preview and expanded mode show them."
             ) {
                 SettingsToggle(isOn: logoVisibility.visible) {
-                    logoVisibility.visible.toggle()
+                    withAnimation(.openMorph) {
+                        logoVisibility.visible.toggle()
+                    }
                 }
             }
         }
