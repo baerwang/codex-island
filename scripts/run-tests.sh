@@ -38,6 +38,14 @@ swiftc \
 
 swiftc \
   -parse-as-library \
+  -o "$OUT_DIR/model-bar-scale-tests" \
+  Sources/Cost/ModelBarScale.swift \
+  Tests/ModelBarScaleTests.swift
+
+"$OUT_DIR/model-bar-scale-tests"
+
+swiftc \
+  -parse-as-library \
   -o "$OUT_DIR/usage-merge-tests" \
   Sources/Model/UsageDisplayModeStore.swift \
   Sources/Usage/AppUsage.swift \

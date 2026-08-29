@@ -12,24 +12,13 @@ import SwiftUI
 // identical between metrics so a metric swap (cost-page Cmd-click into
 // TOKENS style) doesn't reflow the column.
 //
-// Each row's bar carries TWO meanings via overlapping fills on a single
-// track. The bar is normalized PER ROW so the model's own week absolute
-// fills the full track, and the 5h fill is a sub-portion of that:
-//   - Background, dim brand color: always the full track (= the model's
-//     own week activity).
-//   - Foreground, bright brand color: `recentAbsolute / weekAbsolute`
-//     of the track (= the fraction of the model's week that fell in the
-//     last 5h). Always ≤ the dim fill.
-// A model heavily used today but only marginally over the week reads as
-// a near-full bright bar over a full dim bar (most of the model's week
-// is happening now). A model that was used earlier this week but quiet
-// now reads as just a dim bar (no bright). A new model used only in
-// the last 5h reads as nearly full bright over full dim (5h IS this
-// model's whole week).
-//
-// Cross-row scale is intentionally dropped from the bar (so the heavy
-// hitter doesn't pin everyone else to a single pixel) and shown via the
-// trailing column's WEEK absolute (tokens or $).
+// Each row's bar carries TWO meanings on one shared cross-model scale:
+//   - Dim brand color: rolling-week absolute divided by the largest visible
+//     model's rolling-week absolute.
+//   - Bright brand color: recent 5h absolute divided by that same maximum.
+// Since 5h is inside the week, the bright fill never exceeds the dim fill.
+// The longest total bar therefore agrees with the largest trailing number,
+// while the bright overlay still shows how much happened recently.
 //
 // Both intentionally do NOT respect `StylePref.style` (chart-style cycling)
 // — the breakdown is a different vocabulary (table, not gauge) and the
@@ -78,11 +67,8 @@ private struct JoinedModelRow {
     let recent: ModelUsageRow?
     let week: ModelUsageRow
 
-    /// Absolute (tokens or $) for the chosen metric. The bar uses the
-    /// model's own week absolute as its full-track denominator, so 5h
-    /// renders as a sub-portion of the week — never longer. Switching
-    /// from %-within-window to absolute values is what guarantees the
-    /// inclusion property visually (5h is strictly inside week).
+    /// Absolute (tokens or $) for the chosen metric. Both windows use the
+    /// same cross-model denominator in the view, so 5h remains inside week.
     func recentAbsolute(metric: PerModelBreakdown.Metric) -> Double {
         guard let recent else { return 0 }
         switch metric {
@@ -98,10 +84,8 @@ private struct JoinedModelRow {
         }
     }
 
-    /// Trailing-column figure. Always the WEEK absolute — the bar already
-    /// conveys 5h-vs-wk ratio within the row, so the trailing column adds
-    /// cross-row scale (which the per-row bar normalization deliberately
-    /// drops).
+    /// Trailing-column figure. Always the WEEK absolute so the number and the
+    /// shared-scale dim bar communicate the same cross-model ranking.
     func trailingValue(metric: PerModelBreakdown.Metric) -> String {
         switch metric {
         case .tokens:  return Self.formatTokens(week.tokens)
@@ -177,10 +161,15 @@ struct PerModelBreakdown: View {
     }
 
     var body: some View {
+        let visibleRows = rows
+        let maximumWeekAbsolute = visibleRows
+            .map { $0.weekAbsolute(metric: metric) }
+            .max() ?? 0
+
         VStack(alignment: .leading, spacing: 6) {
             header
 
-            if rows.isEmpty {
+            if visibleRows.isEmpty {
                 Spacer(minLength: 0)
                 Text(L10n.tr("no %@ activity in last 5h or this week", providerLowerLabel(provider)))
                     .font(Typography.caption)
@@ -188,11 +177,12 @@ struct PerModelBreakdown: View {
                 Spacer(minLength: 0)
             } else {
                 VStack(spacing: 5) {
-                    ForEach(Array(rows.enumerated()), id: \.element.model) { idx, row in
+                    ForEach(Array(visibleRows.enumerated()), id: \.element.model) { idx, row in
                         PerModelRow(
                             displayName: row.displayName,
                             recentAbsolute: row.recentAbsolute(metric: metric),
                             weekAbsolute: row.weekAbsolute(metric: metric),
+                            maximumWeekAbsolute: maximumWeekAbsolute,
                             trailingValue: row.trailingValue(metric: metric),
                             color: color,
                             weight: perModelRowWeights[min(idx, perModelRowWeights.count - 1)]
@@ -245,10 +235,11 @@ private struct PerModelRow: View {
     /// `weekAbsolute`. Drives the bright fill length within this row.
     let recentAbsolute: Double
     /// Absolute (tokens or $) for the model over the rolling 7d window.
-    /// Defines the row's full track width — bar is normalized per row so
-    /// the dim fill always covers the entire track and the bright fill
-    /// is a strict sub-portion.
+    /// Drives the dim fill on the shared cross-model scale.
     let weekAbsolute: Double
+    /// Largest visible rolling-week absolute. Shared by every row so bar
+    /// lengths agree with the trailing values.
+    let maximumWeekAbsolute: Double
     /// Pre-formatted week-absolute (e.g. "12K", "$24.50").
     let trailingValue: String
     let color: Color
@@ -273,6 +264,7 @@ private struct PerModelRow: View {
             OverlapBar(
                 recentAbsolute: recentAbsolute,
                 weekAbsolute: weekAbsolute,
+                maximumWeekAbsolute: maximumWeekAbsolute,
                 color: color,
                 weight: weight
             )
@@ -285,28 +277,20 @@ private struct PerModelRow: View {
     }
 }
 
-/// Single-track bar with TWO overlapping fills, normalized PER ROW. The
-/// model's own week absolute defines the full track width, so:
-///   - Dim fill (week)      = full track width whenever the model had
-///                            any week activity (the "100% of this
-///                            model's week" baseline).
-///   - Bright fill (5h)     = `recentAbsolute / weekAbsolute` of the
-///                            track. Always ≤ the dim fill because
-///                            `recent ≤ week` (5h is a strict subset of
-///                            the rolling 7-day window).
+/// Single-track bar with TWO overlapping fills on one shared model scale:
+///   - Dim fill (week)      = `weekAbsolute / maximumWeekAbsolute`.
+///   - Bright fill (5h)     = `recentAbsolute / maximumWeekAbsolute`.
+/// The largest weekly model reaches the full track; every other row is
+/// proportionally shorter, and the 5h overlay remains within its week fill.
 ///
 /// Drawing order matters: track → week (dim, behind) → 5h (bright, on
 /// top). When 5h is small, the dim bar peeks out behind the bright tip
 /// and trails to the right edge. When the model has only week activity
 /// (no 5h), only the dim bar shows.
-///
-/// Per-row normalization deliberately drops cross-row scale; the heavy
-/// hitter doesn't pin everyone else to a single pixel, and the trailing
-/// column carries the absolute scale (4.1M vs 27K vs 184) so the user
-/// can still compare across rows.
 private struct OverlapBar: View {
     let recentAbsolute: Double
     let weekAbsolute: Double
+    let maximumWeekAbsolute: Double
     let color: Color
     /// Modulates both fill opacities so the top model dominates and
     /// lesser rows recede. Independent of value so a tiny-but-active
@@ -320,17 +304,19 @@ private struct OverlapBar: View {
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width
-            // Row-local fraction: 5h as a portion of THIS model's week.
-            // Clamp to [0, 1]; in practice recent ≤ week always, but
-            // float division makes the explicit clamp cheap insurance.
-            let recentFrac: CGFloat = weekAbsolute > 0
-                ? CGFloat(min(1.0, max(0.0, recentAbsolute / weekAbsolute)))
-                : 0
+            let weekFrac = CGFloat(ModelBarScale.fraction(
+                value: weekAbsolute, maximum: maximumWeekAbsolute
+            ))
+            let recentFrac = CGFloat(ModelBarScale.nestedFraction(
+                value: recentAbsolute,
+                within: weekAbsolute,
+                maximum: maximumWeekAbsolute
+            ))
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(.white.opacity(0.06))
                     .frame(height: Self.barHeight)
-                if weekAbsolute > 0 {
+                if weekFrac > 0 {
                     // Floor the dim opacity so the 4th-row track baseline
                     // stays visible — without this, row 3's weight 0.30
                     // would render the dim fill at 0.09 opacity, below the
@@ -342,7 +328,11 @@ private struct OverlapBar: View {
                     let dimOpacity = max(weight * dimFillMultiplier, 0.15)
                     Capsule()
                         .fill(color.opacity(dimOpacity))
-                        .frame(width: w, height: Self.barHeight)
+                        .frame(
+                            width: max(2, w * weekFrac),
+                            height: Self.barHeight
+                        )
+                        .animation(.strongEaseOut, value: weekFrac)
                 }
                 if recentFrac > 0 {
                     Capsule()
