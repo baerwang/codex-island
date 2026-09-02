@@ -72,6 +72,48 @@ struct ProjectCostTests {
         ], now: now)
         expect(futureExcluded.today.tokens == 0, "future-dated local event does not inflate today")
 
+        let exactModels = CostSummary.summarize(events: [
+            TokenEvent(
+                provider: .claude, timestamp: now.addingTimeInterval(-6 * 3600),
+                model: "claude-fable-5", inputTokens: 10, outputTokens: 0,
+                cacheCreationTokens: 0, cacheReadTokens: 0
+            ),
+            TokenEvent(
+                provider: .claude, timestamp: now,
+                model: "claude-fable-5-1", inputTokens: 20, outputTokens: 0,
+                cacheCreationTokens: 0, cacheReadTokens: 0
+            ),
+            TokenEvent(
+                provider: .claude, timestamp: now,
+                model: "claude-aurora-7-2-20270101", inputTokens: 30, outputTokens: 0,
+                cacheCreationTokens: 0, cacheReadTokens: 0
+            ),
+        ], now: now)
+        expect(
+            Set(exactModels.weekByModel.map(\.model)) == [
+                "claude-fable-5", "claude-fable-5-1", "claude-aurora-7-2-20270101",
+            ],
+            "weekly model rows preserve exact log identifiers"
+        )
+        expect(
+            exactModels.weekByModel.first { $0.model == "claude-fable-5-1" }?.displayName
+                == "Fable 5.1",
+            "point release renders with its exact version"
+        )
+        expect(
+            exactModels.weekByModel.first { $0.model == "claude-aurora-7-2-20270101" }?.displayName
+                == "Aurora 7.2.20270101",
+            "previously unknown model displays dynamically without a client update"
+        )
+        expect(
+            !Pricing.isKnown("claude-aurora-7-2-20270101"),
+            "model visibility does not depend on a hard-coded price entry"
+        )
+        expect(
+            exactModels.recentByModel.allSatisfy { $0.model != "claude-fable-5" },
+            "old model remains weekly history without being fabricated as recent"
+        )
+
         print(failures == 0 ? "ALL PASS" : "\(failures) FAILURE(S)")
         exit(failures == 0 ? 0 : 1)
     }

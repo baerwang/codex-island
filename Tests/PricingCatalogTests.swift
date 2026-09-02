@@ -136,14 +136,36 @@ struct PricingCatalogTests {
                "200 installs the payload")
         expect(PricingCatalog.lastFetched == base, "200 records the fetch time")
 
-        // Within 24h the refresh is a no-op — no request at all.
+        // Within 24h the normal refresh is a no-op — no request at all.
         let before = seenHeaders.count
-        await PricingCatalog.refreshIfNeeded(
+        let skipped = await PricingCatalog.refreshIfNeeded(
             now: base.addingTimeInterval(3_600), cache: tmp, fetch: transport(200, Data(), nil))
         expect(seenHeaders.count == before, "refresh inside 24h makes no request")
+        expect(skipped == .skipped, "daily refresh reports that it was skipped")
+
+        // An unknown model shortens only the freshness threshold; it still
+        // uses the same ETag request and never needs a client-side model row.
+        let unknownCheck = base.addingTimeInterval(2 * 3_600)
+        let unknownResult = await PricingCatalog.refreshIfNeeded(
+            now: unknownCheck,
+            minimumInterval: PricingCatalog.unknownModelRefreshInterval,
+            cache: tmp,
+            fetch: transport(304, Data(), nil)
+        )
+        expect(seenHeaders.count == before + 1, "unknown model checks the catalog before 24h")
+        expect(unknownResult == .unchanged, "unknown-model check accepts an unchanged catalog")
+
+        let cooldownResult = await PricingCatalog.refreshIfNeeded(
+            now: unknownCheck.addingTimeInterval(30 * 60),
+            minimumInterval: PricingCatalog.unknownModelRefreshInterval,
+            cache: tmp,
+            fetch: transport(304, Data(), nil)
+        )
+        expect(seenHeaders.count == before + 1, "unknown-model retries respect hourly cooldown")
+        expect(cooldownResult == .skipped, "unknown-model cooldown reports skipped")
 
         // Past 24h it fetches again, now carrying the stored ETag.
-        let later = base.addingTimeInterval(25 * 3_600)
+        let later = unknownCheck.addingTimeInterval(25 * 3_600)
         await PricingCatalog.refreshIfNeeded(now: later, cache: tmp, fetch: transport(304, Data(), nil))
         expect(seenHeaders.last == "\"abc\"", "stored ETag is sent as If-None-Match")
         expect(PricingCatalog.lastFetched == later, "304 advances the fetch time")

@@ -145,6 +145,22 @@ enum LogParseCache {
         return dir.appendingPathComponent(filename)
     }
 
+    /// Seed a namespaced cache from the former shared cache on first use.
+    /// `walk` immediately prunes entries outside the caller's root, so this
+    /// safely preserves matching files without carrying another profile's
+    /// rows forward. Subsequent runs use the namespaced destination directly.
+    static func seedCacheIfMissing(filename: String, from legacyFilename: String) {
+        guard filename != legacyFilename,
+              let destination = cacheURL(filename: filename),
+              let legacy = cacheURL(filename: legacyFilename)
+        else { return }
+        let fm = FileManager.default
+        guard !fm.fileExists(atPath: destination.path),
+              fm.fileExists(atPath: legacy.path)
+        else { return }
+        try? fm.copyItem(at: legacy, to: destination)
+    }
+
     static func loadCache<Event: Codable>(
         filename: String,
         version: Int,

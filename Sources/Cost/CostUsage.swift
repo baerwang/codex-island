@@ -38,9 +38,10 @@ struct CostWindow {
 /// doesn't expose this slice). Currently used by the prototype Repurpose
 /// variant to surface "what's burning my quota right now".
 struct ModelUsageRow {
-    /// Canonical model identifier (date suffix stripped via Pricing).
+    /// Exact model identifier recorded by the provider's local session log.
+    /// Point releases and dated snapshots remain separate rows.
     let model: String
-    /// Pretty name for UI ("Opus 4.7", "Sonnet 4.6", etc.).
+    /// Readable spelling of that exact identifier ("Opus 4.7", etc.).
     let displayName: String
     /// Billable tokens (input + output) attributed to this model in the
     /// window. Cache reads are excluded so bars track what actually

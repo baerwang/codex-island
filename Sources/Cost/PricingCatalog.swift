@@ -20,6 +20,13 @@ enum CatalogFetchResult: Equatable {
     case rejected(String)
 }
 
+enum CatalogRefreshResult: Equatable {
+    case skipped
+    case updated
+    case unchanged
+    case failed
+}
+
 /// Remote model price table, refreshed daily from the published catalog.
 ///
 /// `Pricing` reads this before its own embedded seed, so anything installed
@@ -41,6 +48,7 @@ enum PricingCatalog {
     private static let lock = NSLock()
     private nonisolated(unsafe) static var models: [String: CatalogRates] = [:]
     private nonisolated(unsafe) static var fetchedAt: Date?
+    private nonisolated(unsafe) static var refreshAttemptedAt: Date?
 
     static func rates(for canonical: String) -> CatalogRates? {
         lock.lock()
@@ -96,6 +104,10 @@ enum PricingCatalog {
     }
 
     private static let refreshInterval: TimeInterval = 24 * 60 * 60
+    /// A newly observed, unpriced model is evidence that the normal daily
+    /// cache may predate a provider release. Retry sooner, but never more than
+    /// hourly while the upstream catalog is still catching up or offline.
+    static let unknownModelRefreshInterval: TimeInterval = 60 * 60
 
     private nonisolated(unsafe) static var etag: String?
 
@@ -168,14 +180,29 @@ enum PricingCatalog {
         persist(cached.payload, etag: cached.etag, at: stamp, to: url)
     }
 
+    private static func claimRefresh(at now: Date, minimumInterval: TimeInterval) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let latest = [fetchedAt, refreshAttemptedAt].compactMap { $0 }.max()
+        if let latest, now.timeIntervalSince(latest) < minimumInterval { return false }
+        // Record attempts as well as successes so a network outage cannot turn
+        // a 5-minute cost poll into a 5-minute HTTP retry loop.
+        refreshAttemptedAt = now
+        return true
+    }
+
+    @discardableResult
     static func refreshIfNeeded(
         now: Date = Date(),
+        minimumInterval: TimeInterval = refreshInterval,
         cache: URL? = cacheURL(),
         fetch: (URLRequest) async throws -> (Data, URLResponse) = {
             try await URLSession.shared.data(for: $0)
         }
-    ) async {
-        if let last = lastFetched, now.timeIntervalSince(last) < refreshInterval { return }
+    ) async -> CatalogRefreshResult {
+        guard claimRefresh(at: now, minimumInterval: minimumInterval) else {
+            return .skipped
+        }
 
         var request = URLRequest(url: endpoint)
         request.timeoutInterval = 15
@@ -183,19 +210,21 @@ enum PricingCatalog {
 
         guard let (data, response) = try? await fetch(request),
               let http = response as? HTTPURLResponse
-        else { return }
+        else { return .failed }
 
         switch interpret(status: http.statusCode, data: data) {
         case .payload(let payload):
             install(models: payload.models, fetchedAt: now)
             persist(payload, etag: http.value(forHTTPHeaderField: "ETag"), at: now, to: cache)
+            return .updated
         case .unchanged:
             markVerified(at: now)
             touchCache(at: now, to: cache)
+            return .unchanged
         case .rejected:
             // Deliberately silent and deliberately inert: staleness already
             // surfaces in Settings, and the previous catalog stays correct.
-            break
+            return .failed
         }
     }
 

@@ -8,6 +8,16 @@ cd "$(dirname "$0")/.."
 OUT_DIR=$(mktemp -d)
 trap 'rm -rf "$OUT_DIR"' EXIT
 
+# The four-page carousel owns trackpad scrolling. A nested SwiftUI ScrollView
+# on the Models page materializes as NSScrollView and captures the gesture at
+# `.began`, so the host never receives the `.ended` needed to change pages.
+if rg -n '^[[:space:]]*ScrollView\(' \
+  Sources/Views/ModelsView.swift Sources/Views/ProviderBreakdown.swift; then
+  echo "FAIL Models page must not contain a nested ScrollView"
+  exit 1
+fi
+echo "PASS Models page leaves page-swipe ownership to the carousel"
+
 swiftc \
   -parse-as-library \
   -o "$OUT_DIR/notch-height-tests" \
@@ -43,6 +53,16 @@ swiftc \
   Tests/ModelBarScaleTests.swift
 
 "$OUT_DIR/model-bar-scale-tests"
+
+swiftc \
+  -parse-as-library \
+  -o "$OUT_DIR/codex-log-reader-cache-tests" \
+  Sources/Cost/TokenEvent.swift \
+  Sources/Cost/LogParseCache.swift \
+  Sources/Cost/CodexLogReader.swift \
+  Tests/CodexLogReaderCacheTests.swift
+
+"$OUT_DIR/codex-log-reader-cache-tests"
 
 swiftc \
   -parse-as-library \

@@ -34,6 +34,9 @@ final class CostStore: ObservableObject {
     private var pollTimer: Timer?
     private var intervalCancellable: AnyCancellable?
     private var codexRefreshPending = false
+    private var pricingRefreshInFlight = false
+    private var pricingRescanPending = false
+    private var pendingUnknownPricingModels = Set<String>()
 
     private var pollInterval: TimeInterval {
         TimeInterval(RefreshIntervalStore.shared.seconds)
@@ -47,7 +50,7 @@ final class CostStore: ObservableObject {
         restoreFromCache()
     }
 
-    func refresh() {
+    func refresh(priority: TaskPriority = .userInitiated) {
         // Demo mode: skip log scanning, inject hand-tuned numbers that
         // tell a "user extracts more value than the $200 subscription"
         // story. Never persists, so real cache is preserved.
@@ -64,7 +67,7 @@ final class CostStore: ObservableObject {
         // the result; avoids wasted I/O when both are already loading.
         let openCodeTask: Task<[TokenEvent], Never>?
         if !claudeLoading || !codexLoading {
-            openCodeTask = Task.detached(priority: .userInitiated) {
+            openCodeTask = Task.detached(priority: priority) {
                 OpenCodeLogReader.scan(lookbackDays: days)
             }
         } else {
@@ -74,7 +77,7 @@ final class CostStore: ObservableObject {
         // Codex one (and vice versa) on the next tick.
         if !claudeLoading {
             claudeLoading = true
-            Task.detached(priority: .userInitiated) { [weak self] in
+            Task.detached(priority: priority) { [weak self] in
                 let openCodeEvents = await openCodeTask?.value ?? []
                 let events = ClaudeLogReader.scan(lookbackDays: days)
                     + openCodeEvents.filter { $0.provider == .claude }
@@ -84,7 +87,7 @@ final class CostStore: ObservableObject {
         }
         if !codexLoading {
             codexLoading = true
-            Task.detached(priority: .userInitiated) { [weak self] in
+            Task.detached(priority: priority) { [weak self] in
                 let openCodeEvents = await openCodeTask?.value ?? []
                 var codexEvents: [TokenEvent] = []
                 var byProfile: [UUID: ProviderCost] = [:]
@@ -146,6 +149,8 @@ final class CostStore: ObservableObject {
         self.claudeLastUpdated = Date()
         updateCombinedTimestamp()
         persist()
+        refreshPricingIfUnknown(in: cost)
+        runPricingRescanIfReady()
     }
 
     /// A duplicate CODEX_HOME has identical session files and would otherwise
@@ -175,6 +180,47 @@ final class CostStore: ObservableObject {
             codexRefreshPending = false
             refreshCodexForConfiguredProfiles()
         }
+        refreshPricingIfUnknown(in: cost)
+        runPricingRescanIfReady()
+    }
+
+    /// Unknown models remain visible immediately, but their cost stays at $0
+    /// until the remote catalog knows their exact id. An unknown id is a
+    /// stronger freshness signal than the normal daily timer, so check the
+    /// catalog on an hourly cooldown and recompute both providers if a new
+    /// payload arrives. No model names are encoded here.
+    private func refreshPricingIfUnknown(in cost: ProviderCost) {
+        let unknownModels = Set(cost.today.unknownModels).union(cost.month.unknownModels)
+        guard !unknownModels.isEmpty else { return }
+        pendingUnknownPricingModels.formUnion(unknownModels)
+        guard !pricingRefreshInFlight else { return }
+
+        pricingRefreshInFlight = true
+        Task { [weak self] in
+            await PricingCatalog.refreshIfNeeded(
+                minimumInterval: PricingCatalog.unknownModelRefreshInterval
+            )
+            guard let self else { return }
+            self.pricingRefreshInFlight = false
+            let observedModels = self.pendingUnknownPricingModels
+            self.pendingUnknownPricingModels.removeAll()
+            // Also handles a race with the normal daily refresh: even if this
+            // request was skipped because another one just completed, recompute
+            // as soon as the formerly unknown id is now priced in memory.
+            if observedModels.contains(where: Pricing.isKnown) {
+                self.pricingRescanPending = true
+                self.runPricingRescanIfReady()
+            }
+        }
+    }
+
+    /// A catalog response can finish while either provider is still scanning
+    /// against the old table. Wait until both commits land, then run one clean
+    /// pass so the warning and totals update together.
+    private func runPricingRescanIfReady() {
+        guard pricingRescanPending, !loading else { return }
+        pricingRescanPending = false
+        refresh(priority: .utility)
     }
 
     private func updateCombinedTimestamp() {
@@ -193,7 +239,7 @@ final class CostStore: ObservableObject {
 
     func startAutoRefresh() {
         stopAutoRefresh()
-        refresh()
+        refresh(priority: .utility)
         armTimer()
         intervalCancellable = RefreshIntervalStore.shared.$seconds
             .dropFirst()
@@ -213,7 +259,7 @@ final class CostStore: ObservableObject {
     private func armTimer() {
         pollTimer?.invalidate()
         pollTimer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+            Task { @MainActor in self?.refresh(priority: .utility) }
         }
     }
 

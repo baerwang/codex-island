@@ -25,8 +25,8 @@ import SwiftUI
 // footer chip already communicates which style the live tiles are using.
 
 /// Visual weights mapped by row index — top model dominates, lesser models
-/// recede. Independent of fill length so a tiny-but-active row still reads
-/// as "live" rather than as a dead row.
+/// recede. Rows after the fourth reuse the final weight; every weekly model
+/// remains in the plain stack without introducing a nested scroll gesture.
 private let perModelRowWeights: [Double] = [0.85, 0.55, 0.40, 0.30]
 
 /// Multiplier applied to the weight for the dim (week) fill so it sits
@@ -35,10 +35,6 @@ private let perModelRowWeights: [Double] = [0.85, 0.55, 0.40, 0.30]
 /// between them is the kind of "looks slightly off" bug visual QA flags
 /// last and the implementor sees never.
 private let dimFillMultiplier: Double = 0.30
-
-/// Maximum rows shown. Four rows fit comfortably in a ~90pt-tall column
-/// alongside one header line at 11pt label / 10pt caption typography.
-private let perModelRowLimit = 4
 
 // MARK: - Provider helpers
 
@@ -142,11 +138,13 @@ struct PerModelBreakdown: View {
         }
     }
 
-    /// Joined rows, sorted by the chosen metric within the week window
-    /// (week is the bigger sample so it's the more stable rank), trimmed
-    /// to the display limit. The `weekByModel` upstream is already
-    /// token-sorted so .tokens metric needs no resort; dollars metric
-    /// re-sorts by week-dollar.
+    /// Joined rows, sorted by the chosen metric within the week window.
+    /// Nothing is truncated in the data: older/lower-volume models remain in
+    /// the stack. This carousel page intentionally contains no `ScrollView`;
+    /// a nested NSScrollView captures the trackpad gesture at `.began` and
+    /// prevents the main carousel from receiving the page-swipe completion.
+    /// The `weekByModel` upstream is already token-sorted so .tokens metric
+    /// needs no resort; dollars metric re-sorts by week-dollar.
     private var rows: [JoinedModelRow] {
         let joined = joinedRows(cost: providerCost)
         let sorted: [JoinedModelRow] = {
@@ -157,7 +155,7 @@ struct PerModelBreakdown: View {
                 return joined.sorted { $0.week.dollars > $1.week.dollars }
             }
         }()
-        return Array(sorted.prefix(perModelRowLimit))
+        return sorted
     }
 
     var body: some View {
@@ -176,7 +174,7 @@ struct PerModelBreakdown: View {
                     .foregroundStyle(.white.opacity(0.4))
                 Spacer(minLength: 0)
             } else {
-                VStack(spacing: 5) {
+                VStack(spacing: visibleRows.count > 4 ? 2 : 5) {
                     ForEach(Array(visibleRows.enumerated()), id: \.element.model) { idx, row in
                         PerModelRow(
                             displayName: row.displayName,

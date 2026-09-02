@@ -73,6 +73,12 @@ enum CostSummary {
         var weekTokensByModel: [String: Int] = [:]
         var weekDollarsByModel: [String: Double] = [:]
         var projects: [String: ProjectAccumulator] = [:]
+        // A provider emits the same cwd on every token event. Resolving
+        // symlinks through Foundation for every row dominated warm scans and
+        // produced gigabytes of transient allocator traffic on large logs.
+        // Resolve each distinct raw path once per aggregation pass instead.
+        var resolvedProjectPaths: [String: (path: String, name: String)] = [:]
+        var unresolvedProjectPaths = Set<String>()
 
         // Drop events older than every window's start. Using `min(...)`
         // matters here because the rolling 7-day window straddles month
@@ -95,9 +101,20 @@ enum CostSummary {
             let billable = event.inputTokens + event.outputTokens
             let tokens = billable + event.cacheCreationTokens + event.cacheReadTokens
             let isUnpriced = tokens > 0 && !Pricing.isKnown(event.model)
-            let canonicalProject = canonicalProjectID(event.projectID)
-            let projectID = "\(event.sourceID ?? "local")::\(canonicalProject ?? "unattributed")"
-            let projectName = canonicalProject.map { URL(fileURLWithPath: $0).lastPathComponent }
+            let resolvedProject: (path: String, name: String)? = {
+                guard let rawProject = event.projectID else { return nil }
+                if let cached = resolvedProjectPaths[rawProject] { return cached }
+                if unresolvedProjectPaths.contains(rawProject) { return nil }
+                guard let path = canonicalProjectID(rawProject) else {
+                    unresolvedProjectPaths.insert(rawProject)
+                    return nil
+                }
+                let resolved = (path: path, name: URL(fileURLWithPath: path).lastPathComponent)
+                resolvedProjectPaths[rawProject] = resolved
+                return resolved
+            }()
+            let projectID = "\(event.sourceID ?? "local")::\(resolvedProject?.path ?? "unattributed")"
+            let projectName = resolvedProject?.name
                 ?? event.projectName.flatMap { $0.isEmpty ? nil : $0 }
                 ?? "Unattributed"
             let sourceID = event.sourceID
@@ -148,24 +165,26 @@ enum CostSummary {
             }
 
             // Weekly rolling window slice — superset of recent, subset of
-            // month (when month is short). Compute canonical name once and
-            // reuse for the 5h slice to avoid double work.
+            // month (when month is short). Keep the exact model identifier
+            // recorded by the local log. Model snapshots and point releases
+            // are distinct activity and must not be folded into a base model
+            // on the Models page.
             if event.timestamp >= weekStart {
-                let canon = Pricing.canonicalModelName(event.model)
+                let modelID = event.model
                 if billable > 0 {
-                    weekTokensByModel[canon, default: 0] += billable
+                    weekTokensByModel[modelID, default: 0] += billable
                 }
                 if cost > 0 {
-                    weekDollarsByModel[canon, default: 0] += cost
+                    weekDollarsByModel[modelID, default: 0] += cost
                 }
 
                 // 5h rolling window slice — strict subset of weekly.
                 if event.timestamp >= recentStart {
                     if billable > 0 {
-                        recentTokensByModel[canon, default: 0] += billable
+                        recentTokensByModel[modelID, default: 0] += billable
                     }
                     if cost > 0 {
-                        recentDollarsByModel[canon, default: 0] += cost
+                        recentDollarsByModel[modelID, default: 0] += cost
                     }
                 }
             }
@@ -272,13 +291,13 @@ enum CostSummary {
     ) -> [ModelUsageRow] {
         let totalTokens = tokensByModel.values.reduce(0, +)
         let totalDollars = dollarsByModel.values.reduce(0, +)
-        let canonicals = Set(tokensByModel.keys).union(dollarsByModel.keys)
-        return canonicals.map { canon in
-            let tokens = tokensByModel[canon] ?? 0
-            let dollars = dollarsByModel[canon] ?? 0
+        let modelIDs = Set(tokensByModel.keys).union(dollarsByModel.keys)
+        return modelIDs.map { modelID in
+            let tokens = tokensByModel[modelID] ?? 0
+            let dollars = dollarsByModel[modelID] ?? 0
             return ModelUsageRow(
-                model: canon,
-                displayName: prettyModelName(canon),
+                model: modelID,
+                displayName: prettyModelName(modelID),
                 tokens: tokens,
                 dollars: dollars,
                 percent: totalTokens > 0 ? Double(tokens) / Double(totalTokens) : 0,
@@ -294,12 +313,12 @@ enum CostSummary {
         }
     }
 
-    /// Pretty-print the canonical model id for UI rows. Falls back to the
-    /// raw id if no friendlier name is wired up yet — better than a blank.
-    private static func prettyModelName(_ canonical: String) -> String {
+    /// Format an exact log model id without consulting a client-side model
+    /// list. Unknown future model families therefore appear immediately.
+    private static func prettyModelName(_ modelID: String) -> String {
         // Anthropic: "claude-opus-4-7" → "Opus 4.7"
-        if canonical.hasPrefix("claude-") {
-            let trimmed = String(canonical.dropFirst("claude-".count))
+        if modelID.hasPrefix("claude-") {
+            let trimmed = String(modelID.dropFirst("claude-".count))
             // Split at first dash, then collapse remaining dashes into dots
             // so "opus-4-7" → "opus.4.7" → "Opus 4.7".
             guard let dash = trimmed.firstIndex(of: "-") else {
@@ -311,17 +330,17 @@ enum CostSummary {
             return "\(family) \(version)"
         }
         // OpenAI: keep as-is, just uppercase the GPT prefix.
-        if canonical.hasPrefix("gpt-") {
-            return canonical.replacingOccurrences(of: "gpt-", with: "GPT-")
+        if modelID.hasPrefix("gpt-") {
+            return modelID.replacingOccurrences(of: "gpt-", with: "GPT-")
         }
         // OpenAI reasoning family ("o3-pro", "o4-mini-high", etc.) — already
         // short and conventional, capitalize only the leading letter so it
         // matches the typographic weight of "GPT-..." / "Opus 4.7".
-        if let first = canonical.first, first == "o", canonical.count > 1,
-           canonical.dropFirst().first?.isNumber == true {
-            return canonical.prefix(1).uppercased() + canonical.dropFirst()
+        if let first = modelID.first, first == "o", modelID.count > 1,
+           modelID.dropFirst().first?.isNumber == true {
+            return modelID.prefix(1).uppercased() + modelID.dropFirst()
         }
-        return canonical
+        return modelID
     }
 
     private static func runningSum(_ values: [Double]) -> [Double] {

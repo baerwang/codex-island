@@ -9,9 +9,10 @@ import Foundation
 ///     accumulating `total_token_usage`, which is a known footgun for
 ///     forked sessions
 ///
-/// Per-file parse results are memoized in `~/Library/Caches/.../codex-parse-cache.v1.json`
-/// keyed by (path, mtime, size). Between two 5/15/30-minute polls almost no
-/// rollout file has changed, so the steady-state refresh skips re-parsing.
+/// Per-file parse results are memoized in a cache namespaced by CODEX_HOME,
+/// keyed by (path, mtime, size). Separate homes must not share one cache:
+/// each `walk` prunes files outside its root, which would make profiles erase
+/// one another and reparse gigabytes on every refresh.
 enum CodexLogReader {
     static func scan(
         lookbackDays: Int = 30, codexHome: String, sourceID: String? = nil,
@@ -19,11 +20,16 @@ enum CodexLogReader {
     ) -> [TokenEvent] {
         let cutoff = Date().addingTimeInterval(-Double(lookbackDays) * 86400)
         var out: [TokenEvent] = []
+        let cacheFilename = cacheFilename(codexHome: codexHome)
+        LogParseCache.seedCacheIfMissing(
+            filename: cacheFilename,
+            from: legacyCacheFilename
+        )
 
         LogParseCache.walk(
             roots: [sessionsRoot(codexHome: codexHome)],
             cutoff: cutoff,
-            cacheFilename: "codex-parse-cache.v1.json",
+            cacheFilename: cacheFilename,
             cacheVersion: cacheVersion,
             fileFilter: { $0.lastPathComponent.hasPrefix("rollout-") },
             parse: { parseFile(at: $0) },
@@ -46,6 +52,20 @@ enum CodexLogReader {
         )
         return out
     }
+
+    /// Stable, filesystem-safe namespace. Swift's `hashValue` is randomized
+    /// per process, so use a tiny deterministic FNV-1a digest instead.
+    static func cacheFilename(codexHome: String) -> String {
+        let identity = URL(fileURLWithPath: codexHome).standardizedFileURL.path
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in identity.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return String(format: "codex-parse-cache.%016llx.v1.json", hash)
+    }
+
+    private static let legacyCacheFilename = "codex-parse-cache.v1.json"
 
     private static func sessionsRoot(codexHome: String) -> URL {
         URL(fileURLWithPath: codexHome).appendingPathComponent("sessions", isDirectory: true)
