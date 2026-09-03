@@ -125,7 +125,7 @@ enum CLIUsageParser {
         // The rendered TUI uses box/block glyphs for separators and progress
         // bars. Normalize them to whitespace before matching its labels.
         let screen = text.replacingOccurrences(
-            of: #"[\u{2500}-\u{259F}]"#, with: " ", options: .regularExpression
+            of: "[\u{2500}-\u{259F}]", with: " ", options: .regularExpression
         )
         let session = reading(
             in: screen,
@@ -192,14 +192,28 @@ enum CLIUsageParser {
     }
 
     static func parseCodex(_ text: String, timedOut: Bool) -> AppUsage {
+        let screen = text.replacingOccurrences(
+            of: "[\u{2500}-\u{259F}]",
+            with: " ",
+            options: .regularExpression
+        )
         let fiveHours = readings(
             in: text,
             pattern: #"(?is)5h\s+limit:.*?(\d{1,3})%\s+left.*?\(resets\s+([^\)]+)\)"#,
             remaining: true
         )
-        let weekReadings = uniqueReadings(readings(
+        let allWeekReadings = uniqueReadings(readings(
             in: text,
             pattern: #"(?is)Weekly\s+limit:.*?(\d{1,3})%\s+left.*?\(resets\s+([^\)]+)\)"#,
+            remaining: true
+        ))
+        // Current Codex status screens can place named quota pools before the
+        // account row, for example `gpt-reserve Weekly limit: 100% left`.
+        // Only a line whose label begins directly with `Weekly limit` is the
+        // account headline. Keep named/model rows in the detail list below.
+        let accountWeekReadings = uniqueReadings(readings(
+            in: screen,
+            pattern: #"(?ims)^[ \t]*Weekly\s+limit:.*?(\d{1,3})%\s+left.*?\(resets\s+([^\)]+)\)"#,
             remaining: true
         ))
         // A TUI redraw re-emits its full table into the PTY transcript. The
@@ -210,7 +224,16 @@ enum CLIUsageParser {
         // The first weekly row is the account-wide limit. Later weekly rows
         // belong to model-specific limits (for example Codex Spark) and stay
         // in `windows`, but must not replace the compact account-week card.
-        let weekly = weekReadings.first
+        let weekly = accountWeekReadings.first ?? allWeekReadings.first
+        let modelWeekReadings: [(percent: Int, reset: String)] = {
+            guard let weekly else { return [] }
+            guard !accountWeekReadings.isEmpty else {
+                return Array(allWeekReadings.dropFirst())
+            }
+            return allWeekReadings.filter {
+                $0.percent != weekly.percent || $0.reset != weekly.reset
+            }
+        }()
         let plan = codexPlan(in: text)
         if isUnauthenticated(text) { return UsageFetcher.unauthenticatedUsage() }
         // API-key sessions have no subscription quota by design. Treat this
@@ -231,9 +254,15 @@ enum CLIUsageParser {
         if let fiveHour {
             windows.append(detail(id: "codex.5h", label: "5h limit", reading: fiveHour))
         }
-        for (index, item) in weekReadings.enumerated() {
-            let label = index == 0 ? "Weekly limit" : "Model weekly limit \(index)"
-            windows.append(detail(id: "codex.week.\(index)", label: label, reading: item))
+        if let weekly {
+            windows.append(detail(id: "codex.week.0", label: "Weekly limit", reading: weekly))
+        }
+        for (index, item) in modelWeekReadings.enumerated() {
+            windows.append(detail(
+                id: "codex.week.model.\(index)",
+                label: "Model weekly limit \(index + 1)",
+                reading: item
+            ))
         }
         return AppUsage(
             fiveHour: fiveHour.map { window(used: $0.percent, reset: $0.reset) } ?? .unknown,

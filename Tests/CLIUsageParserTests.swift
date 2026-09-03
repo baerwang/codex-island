@@ -137,6 +137,31 @@ struct CLIUsageParserTests {
         expect(codex.windows.count == 3, "Codex retains every weekly/model window")
         expect(codex.plan == "pro", "Codex plan parses")
 
+        let codexNamedQuotaPool = CLIUsageParser.parseCodex("""
+        │  gpt-reserve Weekly limit: 100% left
+        │  (resets 09:45 on 10 Sep)
+        │  Weekly limit: 82% left
+        │  (resets 10:25 on 7 Sep)
+        │  GPT-5.3-Codex-Spark limit:
+        │  5h limit: 100% left
+        │  (resets 14:45)
+        │  Weekly limit: 100% left
+        │  (resets 09:45 on 10 Sep)
+        """, timedOut: false)
+        expect(
+            codexNamedQuotaPool.weekly.percentInt == 18,
+            "Codex account week ignores a prefixed named quota pool"
+        )
+        expect(
+            codexNamedQuotaPool.windows.first { $0.id == "codex.week.0" }?.usedPercent
+                == 0.18,
+            "Codex account weekly detail keeps the unprefixed 82% remaining row"
+        )
+        expect(
+            codexNamedQuotaPool.windows.contains { $0.id.hasPrefix("codex.week.model") },
+            "Codex named/model weekly quota remains available as detail"
+        )
+
         let codexTier = CLIUsageParser.parseCodex("""
         Account: user@example.com (Pro x5)
         5h limit: 100% left (resets 16:50)
