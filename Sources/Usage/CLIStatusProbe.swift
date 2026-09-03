@@ -80,7 +80,18 @@ enum CLIStatusProbe {
         let launch = ChildLaunch(request: request)
         defer { launch.release() }
         var master: Int32 = -1
-        var window = winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0)
+        // Claude 2.1.257 can place plugin/statusline diagnostics above its
+        // quota cards. In a 24-row PTY the `/usage` screen then stops after
+        // the current-session percentage, before its reset and weekly rows.
+        // Give that screen enough physical rows to render the complete table;
+        // keep every other probe at the terminal size already covered by its
+        // parser fixtures.
+        let rowCount: UInt16
+        switch (request.provider, request.command) {
+        case (.claude, .usage): rowCount = 48
+        default: rowCount = 24
+        }
+        var window = winsize(ws_row: rowCount, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0)
         let pid = forkpty(&master, nil, nil, &window)
         guard pid >= 0 else {
             return Transcript(text: "pty unavailable", raw: Data(), timedOut: false)
@@ -143,7 +154,12 @@ enum CLIStatusProbe {
                        !sawSettledCodexStatus,
                        now >= nextStatusDetectionAt {
                         let detected = codexStatusFrameDetected(
-                            in: transcriptText(raw, provider: .codex)
+                            in: transcriptText(
+                                raw,
+                                provider: .codex,
+                                terminalRows: Int(window.ws_row),
+                                terminalColumns: Int(window.ws_col)
+                            )
                         )
                         let detectedAt = Date()
                         nextStatusDetectionAt = detectedAt.addingTimeInterval(statusDetectionInterval)
@@ -205,7 +221,12 @@ enum CLIStatusProbe {
         close(master)
         reapAfterClosingPTY(pid)
         return Transcript(
-            text: transcriptText(raw, provider: request.provider),
+            text: transcriptText(
+                raw,
+                provider: request.provider,
+                terminalRows: Int(window.ws_row),
+                terminalColumns: Int(window.ws_col)
+            ),
             raw: raw,
             timedOut: timedOut
         )
@@ -441,12 +462,16 @@ enum CLIStatusProbe {
     /// This intentionally implements only the tiny VT100 subset emitted by
     /// the two status screens: cursor movement, erasing, alternate screen,
     /// and style/OSC suppression. It is not a general terminal emulator.
-    static func terminalText(_ raw: Data) -> String {
+    static func terminalText(
+        _ raw: Data,
+        rows: Int = 24,
+        columns: Int = 80
+    ) -> String {
         let bytes = Array(raw)
         guard !bytes.isEmpty else { return "" }
 
-        var primary = TerminalBuffer()
-        var alternate = TerminalBuffer()
+        var primary = TerminalBuffer(rows: rows, columns: columns)
+        var alternate = TerminalBuffer(rows: rows, columns: columns)
         var usesAlternate = false
         var index = 0
 
@@ -543,8 +568,17 @@ enum CLIStatusProbe {
     /// linear stream. Merge that stream only when it contains more quota
     /// evidence; Claude keeps the physical-frame-only behavior its parser
     /// relies on for overwritten labels.
-    static func transcriptText(_ raw: Data, provider: Provider) -> String {
-        let rendered = terminalText(raw)
+    static func transcriptText(
+        _ raw: Data,
+        provider: Provider,
+        terminalRows: Int = 24,
+        terminalColumns: Int = 80
+    ) -> String {
+        let rendered = terminalText(
+            raw,
+            rows: terminalRows,
+            columns: terminalColumns
+        )
         guard provider == .codex else { return rendered }
         let linear = strippedTerminalText(raw)
         guard quotaScore(linear) > quotaScore(rendered) else { return rendered }
@@ -575,16 +609,23 @@ enum CLIStatusProbe {
     }
 
     private struct TerminalBuffer {
-        private static let rows = 24
-        private static let columns = 80
-        private var cells = Array(
-            repeating: Array(repeating: Character(" "), count: columns), count: rows
-        )
+        private let rowCount: Int
+        private let columnCount: Int
+        private var cells: [[Character]]
         private var row = 0
         private var column = 0
         private var wrapPending = false
         private var savedRow = 0
         private var savedColumn = 0
+
+        init(rows: Int, columns: Int) {
+            rowCount = max(1, rows)
+            columnCount = max(1, columns)
+            cells = Array(
+                repeating: Array(repeating: Character(" "), count: columnCount),
+                count: rowCount
+            )
+        }
 
         mutating func write(_ character: Character) {
             if wrapPending {
@@ -594,15 +635,15 @@ enum CLIStatusProbe {
             }
             guard cells.indices.contains(row), cells[row].indices.contains(column) else { return }
             cells[row][column] = character
-            if column == Self.columns - 1 { wrapPending = true } else { column += 1 }
+            if column == columnCount - 1 { wrapPending = true } else { column += 1 }
         }
 
         mutating func carriageReturn() { column = 0; wrapPending = false }
         mutating func backspace() { column = max(0, column - 1); wrapPending = false }
-        mutating func tab() { column = min(Self.columns - 1, ((column / 8) + 1) * 8); wrapPending = false }
+        mutating func tab() { column = min(columnCount - 1, ((column / 8) + 1) * 8); wrapPending = false }
         mutating func lineFeed() {
-            if row < Self.rows - 1 { row += 1 }
-            else { cells.removeFirst(); cells.append(Array(repeating: Character(" "), count: Self.columns)) }
+            if row < rowCount - 1 { row += 1 }
+            else { cells.removeFirst(); cells.append(Array(repeating: Character(" "), count: columnCount)) }
             wrapPending = false
         }
         mutating func saveCursor() { savedRow = row; savedColumn = column; wrapPending = false }
@@ -616,14 +657,14 @@ enum CLIStatusProbe {
             let second = numbers.dropFirst().first ?? 0
             switch command {
             case 0x41: row = max(0, row - max(1, first)) // A
-            case 0x42: row = min(Self.rows - 1, row + max(1, first)) // B
-            case 0x43: column = min(Self.columns - 1, column + max(1, first)) // C
+            case 0x42: row = min(rowCount - 1, row + max(1, first)) // B
+            case 0x43: column = min(columnCount - 1, column + max(1, first)) // C
             case 0x44: column = max(0, column - max(1, first)) // D
-            case 0x47: column = min(Self.columns - 1, max(0, first - 1)) // G
+            case 0x47: column = min(columnCount - 1, max(0, first - 1)) // G
             case 0x48, 0x66: // H / f
-                row = min(Self.rows - 1, max(0, first - 1))
-                column = min(Self.columns - 1, max(0, second - 1))
-            case 0x64: row = min(Self.rows - 1, max(0, first - 1)) // d
+                row = min(rowCount - 1, max(0, first - 1))
+                column = min(columnCount - 1, max(0, second - 1))
+            case 0x64: row = min(rowCount - 1, max(0, first - 1)) // d
             case 0x4A: eraseDisplay(first) // J
             case 0x4B: eraseLine(first) // K
             case 0x58: eraseCharacters(first) // X
@@ -638,13 +679,16 @@ enum CLIStatusProbe {
 
         private mutating func eraseDisplay(_ mode: Int) {
             if mode == 2 || mode == 3 {
-                cells = Array(repeating: Array(repeating: Character(" "), count: Self.columns), count: Self.rows)
+                cells = Array(
+                    repeating: Array(repeating: Character(" "), count: columnCount),
+                    count: rowCount
+                )
                 row = 0; column = 0
             } else if mode == 0 {
                 eraseLine(0)
-                guard row + 1 < Self.rows else { return }
-                for next in (row + 1)..<Self.rows {
-                    cells[next] = Array(repeating: Character(" "), count: Self.columns)
+                guard row + 1 < rowCount else { return }
+                for next in (row + 1)..<rowCount {
+                    cells[next] = Array(repeating: Character(" "), count: columnCount)
                 }
             }
         }
@@ -654,15 +698,15 @@ enum CLIStatusProbe {
             let range: ClosedRange<Int>
             switch mode {
             case 1: range = 0...column
-            case 2: range = 0...(Self.columns - 1)
-            default: range = column...(Self.columns - 1)
+            case 2: range = 0...(columnCount - 1)
+            default: range = column...(columnCount - 1)
             }
             for index in range where cells[row].indices.contains(index) { cells[row][index] = " " }
         }
 
         private mutating func eraseCharacters(_ count: Int) {
             guard cells.indices.contains(row) else { return }
-            let end = min(Self.columns, column + max(1, count))
+            let end = min(columnCount, column + max(1, count))
             guard column < end else { return }
             for index in column..<end { cells[row][index] = " " }
         }

@@ -269,6 +269,44 @@ struct CLIUsageParserTests {
         expect(parsedClaudeTUI.weekly.percentInt == 35, "cursor-positioned Claude weekly parses")
         expect(parsedClaudeTUI.windows.count == 3, "cursor-positioned Claude keeps all windows")
 
+        // Claude 2.1.257 can render plugin/statusline diagnostics above the
+        // quota cards. The first quota row then begins below a 24-row PTY, so
+        // the usage probe and renderer must share the taller viewport.
+        let tallClaudeUsage = Data("""
+        \u{1B}[?1049h\u{1B}[2J
+        \u{1B}[25;4HCurrent session
+        \u{1B}[26;4H████ 5% used
+        \u{1B}[27;4HResets 1:20pm (Asia/Shanghai)
+        \u{1B}[29;4HCurrent week (all models)
+        \u{1B}[30;4H████████ 34% used
+        \u{1B}[31;4HResets Sep 7 at 12pm (Asia/Shanghai)
+        \u{1B}[33;4HCurrent week (Fable)
+        \u{1B}[34;4H████████ 57% used
+        \u{1B}[35;4HResets Sep 7 at 12pm (Asia/Shanghai)
+        \u{1B}[?1049l
+        """.utf8)
+        let renderedTallClaudeUsage = CLIStatusProbe.transcriptText(
+            tallClaudeUsage,
+            provider: .claude,
+            terminalRows: 48
+        )
+        let parsedTallClaudeUsage = CLIUsageParser.parseClaude(
+            renderedTallClaudeUsage,
+            timedOut: false
+        )
+        expect(
+            parsedTallClaudeUsage.fiveHour.percentInt == 5,
+            "tall Claude usage screen keeps the session row below line 24"
+        )
+        expect(
+            parsedTallClaudeUsage.weekly.percentInt == 34,
+            "tall Claude usage screen keeps the weekly row below line 24"
+        )
+        expect(
+            parsedTallClaudeUsage.windows.last?.label == "Current week (Fable)",
+            "tall Claude usage screen keeps its model-specific week"
+        )
+
         expect(
             CLIStatusProbe.terminalText(Data("\u{1B}[".utf8)).isEmpty,
             "terminal renderer terminates on a bare incomplete CSI"
