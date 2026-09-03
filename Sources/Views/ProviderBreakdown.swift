@@ -13,10 +13,10 @@ import SwiftUI
 // TOKENS style) doesn't reflow the column.
 //
 // Each row's bar carries TWO meanings on one shared cross-model scale:
-//   - Dim brand color: rolling-week absolute divided by the largest visible
-//     model's rolling-week absolute.
+//   - Dim brand color: rolling-7d absolute divided by the largest visible
+//     model's rolling-7d absolute.
 //   - Bright brand color: recent 5h absolute divided by that same maximum.
-// Since 5h is inside the week, the bright fill never exceeds the dim fill.
+// Since 5h is inside rolling 7d, the bright fill never exceeds the dim fill.
 // The longest total bar therefore agrees with the largest trailing number,
 // while the bright overlay still shows how much happened recently.
 //
@@ -25,11 +25,11 @@ import SwiftUI
 // footer chip already communicates which style the live tiles are using.
 
 /// Visual weights mapped by row index — top model dominates, lesser models
-/// recede. Rows after the fourth reuse the final weight; every weekly model
+/// recede. Rows after the fourth reuse the final weight; every 7d model
 /// remains in the plain stack without introducing a nested scroll gesture.
 private let perModelRowWeights: [Double] = [0.85, 0.55, 0.40, 0.30]
 
-/// Multiplier applied to the weight for the dim (week) fill so it sits
+/// Multiplier applied to the weight for the dim (7d) fill so it sits
 /// behind the bright (5h) fill on the same track. Surfaced as a constant
 /// so the legend swatch and the bar fill stay locked together — drift
 /// between them is the kind of "looks slightly off" bug visual QA flags
@@ -55,7 +55,7 @@ private func providerLowerLabel(_ provider: AlertEngine.Provider) -> String {
 // MARK: - Joined row (one model, two windows)
 
 /// One model's data across both windows. `recent` is `nil` when the model
-/// had no 5h activity (only week activity); `week` is always non-nil
+/// had no 5h activity (only 7d activity); `week` is always non-nil
 /// because `weekByModel` is the superset (5h ⊂ wk).
 private struct JoinedModelRow {
     let model: String
@@ -64,32 +64,48 @@ private struct JoinedModelRow {
     let week: ModelUsageRow
 
     /// Absolute (tokens or $) for the chosen metric. Both windows use the
-    /// same cross-model denominator in the view, so 5h remains inside week.
-    func recentAbsolute(metric: PerModelBreakdown.Metric) -> Double {
+    /// same cross-model denominator in the view, so 5h remains inside 7d.
+    func recentAbsolute(
+        metric: PerModelBreakdown.Metric, tokenMode: TokenCountMode
+    ) -> Double {
         guard let recent else { return 0 }
         switch metric {
-        case .tokens:  return Double(recent.tokens)
+        case .tokens:  return Double(Self.tokenValue(recent, mode: tokenMode))
         case .dollars: return recent.dollars
         }
     }
 
-    func weekAbsolute(metric: PerModelBreakdown.Metric) -> Double {
+    func weekAbsolute(
+        metric: PerModelBreakdown.Metric, tokenMode: TokenCountMode
+    ) -> Double {
         switch metric {
-        case .tokens:  return Double(week.tokens)
+        case .tokens:  return Double(Self.tokenValue(week, mode: tokenMode))
         case .dollars: return week.dollars
         }
     }
 
-    /// Trailing-column figure. Always the WEEK absolute so the number and the
-    /// shared-scale dim bar communicate the same cross-model ranking.
-    func trailingValue(metric: PerModelBreakdown.Metric) -> String {
+    /// Trailing-column figure. Always the rolling-7d absolute so the number
+    /// and shared-scale dim bar communicate the same cross-model ranking.
+    func trailingValue(
+        metric: PerModelBreakdown.Metric, tokenMode: TokenCountMode
+    ) -> String {
         switch metric {
-        case .tokens:  return Self.formatTokens(week.tokens)
+        case .tokens:  return Self.formatTokens(Self.tokenValue(week, mode: tokenMode))
         case .dollars: return Self.formatDollars(week.dollars)
         }
     }
 
+    private static func tokenValue(_ row: ModelUsageRow, mode: TokenCountMode) -> Int {
+        switch mode {
+        case .all:      return row.allTokens
+        case .billable: return row.tokens
+        }
+    }
+
     private static func formatTokens(_ n: Int) -> String {
+        if n >= 1_000_000_000 {
+            return String(format: "%.1fB", Double(n) / 1_000_000_000)
+        }
         if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
         if n >= 1_000     { return "\(n / 1_000)K" }
         return "\(n)"
@@ -126,31 +142,47 @@ struct PerModelBreakdown: View {
 
     let provider: AlertEngine.Provider
     let metric: Metric
+    private let costOverride: ProviderCost?
 
     @ObservedObject private var costStore = CostStore.shared
+    @ObservedObject private var tokenMode = TokenCountModeStore.shared
+
+    init(
+        provider: AlertEngine.Provider,
+        metric: Metric,
+        cost: ProviderCost? = nil
+    ) {
+        self.provider = provider
+        self.metric = metric
+        self.costOverride = cost
+    }
 
     private var color: Color { providerBrandColor(provider) }
 
     private var providerCost: ProviderCost {
+        if let costOverride { return costOverride }
         switch provider {
         case .claude: return costStore.claude
         case .codex: return costStore.codex
         }
     }
 
-    /// Joined rows, sorted by the chosen metric within the week window.
+    /// Joined rows, sorted by the chosen metric within the rolling-7d window.
     /// Nothing is truncated in the data: older/lower-volume models remain in
     /// the stack. This carousel page intentionally contains no `ScrollView`;
     /// a nested NSScrollView captures the trackpad gesture at `.began` and
     /// prevents the main carousel from receiving the page-swipe completion.
-    /// The `weekByModel` upstream is already token-sorted so .tokens metric
-    /// needs no resort; dollars metric re-sorts by week-dollar.
+    /// Token rows are re-sorted here because "All tokens" can have a very
+    /// different rank from input + output when prompt-cache reads dominate.
     private var rows: [JoinedModelRow] {
         let joined = joinedRows(cost: providerCost)
         let sorted: [JoinedModelRow] = {
             switch metric {
             case .tokens:
-                return joined  // already sorted by week tokens desc
+                return joined.sorted {
+                    $0.weekAbsolute(metric: metric, tokenMode: tokenMode.mode)
+                        > $1.weekAbsolute(metric: metric, tokenMode: tokenMode.mode)
+                }
             case .dollars:
                 return joined.sorted { $0.week.dollars > $1.week.dollars }
             }
@@ -161,7 +193,7 @@ struct PerModelBreakdown: View {
     var body: some View {
         let visibleRows = rows
         let maximumWeekAbsolute = visibleRows
-            .map { $0.weekAbsolute(metric: metric) }
+            .map { $0.weekAbsolute(metric: metric, tokenMode: tokenMode.mode) }
             .max() ?? 0
 
         VStack(alignment: .leading, spacing: 6) {
@@ -169,7 +201,7 @@ struct PerModelBreakdown: View {
 
             if visibleRows.isEmpty {
                 Spacer(minLength: 0)
-                Text(L10n.tr("no %@ activity in last 5h or this week", providerLowerLabel(provider)))
+                Text(L10n.tr("no %@ activity in last 5h or 7d", providerLowerLabel(provider)))
                     .font(Typography.caption)
                     .foregroundStyle(.white.opacity(0.4))
                 Spacer(minLength: 0)
@@ -178,10 +210,16 @@ struct PerModelBreakdown: View {
                     ForEach(Array(visibleRows.enumerated()), id: \.element.model) { idx, row in
                         PerModelRow(
                             displayName: row.displayName,
-                            recentAbsolute: row.recentAbsolute(metric: metric),
-                            weekAbsolute: row.weekAbsolute(metric: metric),
+                            recentAbsolute: row.recentAbsolute(
+                                metric: metric, tokenMode: tokenMode.mode
+                            ),
+                            weekAbsolute: row.weekAbsolute(
+                                metric: metric, tokenMode: tokenMode.mode
+                            ),
                             maximumWeekAbsolute: maximumWeekAbsolute,
-                            trailingValue: row.trailingValue(metric: metric),
+                            trailingValue: row.trailingValue(
+                                metric: metric, tokenMode: tokenMode.mode
+                            ),
                             color: color,
                             weight: perModelRowWeights[min(idx, perModelRowWeights.count - 1)]
                         )
@@ -194,7 +232,7 @@ struct PerModelBreakdown: View {
 
     /// Header: title + tiny legend. The legend is the load-bearing UI
     /// element here — it's how the user learns that the bright section
-    /// of each bar is "5h" and the dim section is "week". Without it the
+    /// of each bar is "5h" and the dim section is "7d". Without it the
     /// dual-fill bars are a riddle. Swatch opacities are computed against
     /// the top-row weight (0.85) and the shared dim multiplier so the
     /// legend reads exactly like the top row's bar — no drift.
@@ -205,6 +243,12 @@ struct PerModelBreakdown: View {
                 .font(Typography.sectionLabel)
                 .tracking(0.6)
                 .foregroundStyle(.white.opacity(0.55))
+            if case .tokens = metric {
+                Text("· \(tokenMode.mode.label)")
+                    .font(Typography.micro)
+                    .foregroundStyle(.white.opacity(0.36))
+                    .lineLimit(1)
+            }
             Spacer(minLength: 0)
             HStack(spacing: 4) {
                 Capsule()
@@ -217,7 +261,7 @@ struct PerModelBreakdown: View {
                 Capsule()
                     .fill(color.opacity(topWeight * dimFillMultiplier))
                     .frame(width: 8, height: 4)
-                Text(L10n.tr("week"))
+                Text(L10n.tr("7d"))
                     .font(Typography.caption)
                     .foregroundStyle(.white.opacity(0.50))
             }
@@ -235,10 +279,10 @@ private struct PerModelRow: View {
     /// Absolute (tokens or $) for the model over the rolling 7d window.
     /// Drives the dim fill on the shared cross-model scale.
     let weekAbsolute: Double
-    /// Largest visible rolling-week absolute. Shared by every row so bar
+    /// Largest visible rolling-7d absolute. Shared by every row so bar
     /// lengths agree with the trailing values.
     let maximumWeekAbsolute: Double
-    /// Pre-formatted week-absolute (e.g. "12K", "$24.50").
+    /// Pre-formatted rolling-7d absolute (e.g. "12K", "$24.50").
     let trailingValue: String
     let color: Color
     let weight: Double
@@ -276,14 +320,14 @@ private struct PerModelRow: View {
 }
 
 /// Single-track bar with TWO overlapping fills on one shared model scale:
-///   - Dim fill (week)      = `weekAbsolute / maximumWeekAbsolute`.
+///   - Dim fill (7d)        = `weekAbsolute / maximumWeekAbsolute`.
 ///   - Bright fill (5h)     = `recentAbsolute / maximumWeekAbsolute`.
-/// The largest weekly model reaches the full track; every other row is
-/// proportionally shorter, and the 5h overlay remains within its week fill.
+/// The largest 7d model reaches the full track; every other row is
+/// proportionally shorter, and the 5h overlay remains within its 7d fill.
 ///
-/// Drawing order matters: track → week (dim, behind) → 5h (bright, on
+/// Drawing order matters: track → 7d (dim, behind) → 5h (bright, on
 /// top). When 5h is small, the dim bar peeks out behind the bright tip
-/// and trails to the right edge. When the model has only week activity
+/// and trails to the right edge. When the model has only 7d activity
 /// (no 5h), only the dim bar shows.
 private struct OverlapBar: View {
     let recentAbsolute: Double

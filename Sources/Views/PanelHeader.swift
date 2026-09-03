@@ -3,7 +3,7 @@ import SwiftUI
 /// Provider titles row — Claude on the left, Codex on the right, with a
 /// notch-width spacer in the middle that hides the title content behind
 /// the physical notch. Lives outside `PagedContent` so it stays fixed
-/// while the data area swipes between usage/cost/overview screens.
+/// while the data area swipes between usage/cost/models/overview screens.
 ///
 /// Plan tags ("MAX" / "PLUS") are sourced from `UsageStore` since the
 /// subscription tier is a property of the account, not the current page.
@@ -43,7 +43,7 @@ struct PanelHeader: View {
         .padding(.top, 4)
         .padding(.bottom, min(14, max(0, notch.height - 22 - 4)))
         .onAppear {
-            profilePickerVisible = screenPref.screen == .overview
+            profilePickerVisible = showsConsumptionProfilePicker
         }
         .onChange(of: screenPref.screen) { screen in
             updateProfilePicker(for: screen)
@@ -54,17 +54,21 @@ struct PanelHeader: View {
         switch screenPref.screen {
         case .usage:
             return usageStore.codexHeadlineUsage.plan?.uppercased()
-        case .cost, .models:
+        case .cost:
             return nil
-        case .overview:
+        case .models, .overview:
             guard let selectedID = costProfile.selectedProfileID else { return nil }
             return usageStore.codexByProfile[selectedID]?.plan?.uppercased()
         }
     }
 
+    private var showsConsumptionProfilePicker: Bool {
+        screenPref.screen == .models || screenPref.screen == .overview
+    }
+
     @ViewBuilder
     private var codexProfileSlot: some View {
-        if profilePickerVisible, screenPref.screen == .overview {
+        if profilePickerVisible, showsConsumptionProfilePicker {
             consumptionProfilePicker
         }
     }
@@ -73,14 +77,14 @@ struct PanelHeader: View {
         let token = UUID()
         profileRevealToken = token
         profilePickerVisible = false
-        guard screen == .overview else { return }
+        guard screen == .models || screen == .overview else { return }
 
-        // PagedContent takes 0.36s to finish entering Overview. Instantiate
-        // the AppKit-backed Menu only after that transition, rather than
-        // rendering it offscreen where Menu can escape SwiftUI clipping.
+        // PagedContent takes 0.36s to finish entering a consumption page.
+        // Instantiate the AppKit-backed Menu only after that transition,
+        // rather than rendering it offscreen where it can escape clipping.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) {
             guard profileRevealToken == token,
-                  screenPref.screen == .overview else { return }
+                  showsConsumptionProfilePicker else { return }
             profilePickerVisible = true
         }
     }

@@ -82,7 +82,7 @@ struct PanelFooter: View {
     private var cycleHintAccessibilityLabel: String {
         switch screenPref.screen {
         case .overview: return L10n.tr("Overview shows %@ usage history", currentYearString)
-        case .models: return L10n.tr("Models shows local 5h and weekly activity")
+        case .models: return L10n.tr("Models shows local rolling 5h and 7d activity")
         case .usage, .cost: return L10n.tr("Tip: Command-click to cycle visualization")
         }
     }

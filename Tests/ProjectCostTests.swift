@@ -34,6 +34,14 @@ struct ProjectCostTests {
         expect(Set(summary.projects.compactMap(\.sourceName)) == ["Personal", "Work"], "profile names survive aggregation")
         expect(Set(summary.projects.map(\.todayTokens)) == [350, 3_100], "each profile keeps its own today tokens")
         expect(summary.today.tokens == 3_450, "provider today total remains the sum of project rows")
+        expect(
+            summary.weekByModel.first?.tokens == 3_300,
+            "model row retains input plus output total"
+        )
+        expect(
+            summary.weekByModel.first?.allTokens == 3_450,
+            "model row also retains cache-inclusive total"
+        )
         expect(summary.projects.allSatisfy { $0.monthDollars > 0 }, "per-project month dollar estimates are retained")
         let personalHistory = summary.dailyTokens
             .filter { $0.sourceID == "personal-home" }
@@ -71,6 +79,22 @@ struct ProjectCostTests {
             ),
         ], now: now)
         expect(futureExcluded.today.tokens == 0, "future-dated local event does not inflate today")
+
+        let tokenModes = CostSummary.summarize(events: [
+            TokenEvent(
+                provider: .claude, timestamp: now, model: "claude-sonnet-5",
+                inputTokens: 100, outputTokens: 50, cacheCreationTokens: 200,
+                cacheReadTokens: 1_000
+            ),
+        ], now: now)
+        expect(
+            tokenModes.weekByModel.first?.tokens == 150,
+            "input plus output model mode excludes both cache categories"
+        )
+        expect(
+            tokenModes.weekByModel.first?.allTokens == 1_350,
+            "all-token model mode includes cache creation and reads"
+        )
 
         let exactModels = CostSummary.summarize(events: [
             TokenEvent(

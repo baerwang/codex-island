@@ -21,6 +21,7 @@
 "⚠ %d unpriced" = "⚠ %d 个模型缺价格";
 "$%@ cumulative" = "$%@ 累计";
 "5h" = "5小时";
+"7d" = "7天";
 "All tokens" = "全部 token";
 "All Tokens" = "全部 Token";
 "TOTAL" = "总计";
@@ -75,7 +76,7 @@
 "Mixed Use" = "混合使用";
 "Mostly Claude" = "主要是 Claude";
 "Mostly Codex" = "主要是 Codex";
-"no %@ activity in last 5h or this week" = "过去 5 小时或本周没有 %@ 活动";
+"no %@ activity in last 5h or 7d" = "过去 5 小时或 7 天没有 %@ 活动";
 "No Activity" = "无活动";
 "Notch-style" = "刘海样式";
 "Numeric" = "数字";
@@ -131,7 +132,7 @@
 "Usage" = "用量";
 "Models" = "模型";
 "MODELS" = "模型";
-"Models shows local 5h and weekly activity" = "模型页显示本地 5 小时和本周活动。";
+"Models shows local rolling 5h and 7d activity" = "模型页显示本地滚动 5 小时和 7 天活动。";
 "Provider hidden" = "服务已隐藏";
 "Updates" = "更新";
 "VALUE" = "价值";
@@ -179,6 +180,7 @@
 "5 hours" = "5 小时";
 "Quota mode" = "额度模式";
 "All" = "全部";
+"All accounts · quotas are not combined" = "全部账号 · 额度不合并";
 "%@ LOCAL TOKEN USAGE" = "%@ 本地 TOKEN 消耗";
 "LOCAL TOKENS" = "本地 TOKEN";
 "Account" = "账号";

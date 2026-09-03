@@ -43,17 +43,19 @@ struct ModelUsageRow {
     let model: String
     /// Readable spelling of that exact identifier ("Opus 4.7", etc.).
     let displayName: String
-    /// Billable tokens (input + output) attributed to this model in the
-    /// window. Cache reads are excluded so bars track what actually
-    /// pressures the rate-limit counter.
+    /// Input + output tokens attributed to this model in the window.
+    /// Kept separately from `allTokens` so the Models page can follow the
+    /// user's token-counting preference without rescanning local logs.
     let tokens: Int
+    /// Every token type recorded by the provider: input + output + cache
+    /// creation + cache read. Matches the app's "All tokens" mode.
+    let allTokens: Int
     /// Dollar cost attributed to this model in the window — full
     /// `Pricing.cost(for:)` total including cache rates so the row
     /// reads "what this model is actually costing me", not "what hit
     /// the rate-limit". Cost-page consumers display this directly.
     let dollars: Double
-    /// Share of the window's total billable tokens, 0...1. Drives the
-    /// bar fill on the usage breakdown.
+    /// Share of the window's input + output tokens, 0...1.
     let percent: Double
     /// Share of the window's total dollar spend, 0...1. Drives the bar
     /// fill on the cost breakdown — different from `percent` because a
@@ -98,8 +100,9 @@ struct ProviderCost {
     /// descending. Empty when the provider has no recent events. Approximates
     /// the rate-limited 5h window used by the live tiles.
     var recentByModel: [ModelUsageRow] = []
-    /// Per-model breakdown over the rolling last 7 days, sorted by tokens
-    /// descending. Approximates the weekly window used by the live tiles.
+    /// Per-model breakdown over the rolling last 7 days, sorted by input +
+    /// output tokens descending. This is local activity, not the provider's
+    /// reset-aligned weekly quota window.
     var weekByModel: [ModelUsageRow] = []
     /// Calendar-local daily history, oldest first, with today included as
     /// the final bucket. Powers the overview contribution grid ranges.

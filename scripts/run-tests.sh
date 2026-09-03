@@ -66,6 +66,16 @@ swiftc \
 
 swiftc \
   -parse-as-library \
+  -o "$OUT_DIR/claude-log-reader-dedup-tests" \
+  Sources/Cost/TokenEvent.swift \
+  Sources/Cost/LogParseCache.swift \
+  Sources/Cost/ClaudeLogReader.swift \
+  Tests/ClaudeLogReaderDedupTests.swift
+
+"$OUT_DIR/claude-log-reader-dedup-tests"
+
+swiftc \
+  -parse-as-library \
   -o "$OUT_DIR/usage-merge-tests" \
   Sources/Model/UsageDisplayModeStore.swift \
   Sources/Usage/AppUsage.swift \

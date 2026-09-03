@@ -61,16 +61,16 @@ enum CostSummary {
         // models that actually moved tokens.
         var todayUnknown: Set<String> = []
         var monthUnknown: Set<String> = []
-        // Per-canonical-model billable tokens + dollars within the recent
-        // window. Cache reads excluded from `tokens` (they don't pressure
-        // the rate-limit counter), included in `dollars` (they cost real
-        // money). Two metrics, two consumers: usage-page shows tokens,
-        // cost-page shows dollars.
+        // Per-model input+output, all-token, and dollar totals within the
+        // recent window. Both token totals are retained so the Models page
+        // can follow TokenCountModeStore without another log scan.
         var recentTokensByModel: [String: Int] = [:]
+        var recentAllTokensByModel: [String: Int] = [:]
         var recentDollarsByModel: [String: Double] = [:]
         // Same shape, weekly window. Two windows in one pass costs an
         // extra `>=` per event — cheap relative to JSON parsing upstream.
         var weekTokensByModel: [String: Int] = [:]
+        var weekAllTokensByModel: [String: Int] = [:]
         var weekDollarsByModel: [String: Double] = [:]
         var projects: [String: ProjectAccumulator] = [:]
         // A provider emits the same cwd on every token event. Resolving
@@ -174,6 +174,9 @@ enum CostSummary {
                 if billable > 0 {
                     weekTokensByModel[modelID, default: 0] += billable
                 }
+                if tokens > 0 {
+                    weekAllTokensByModel[modelID, default: 0] += tokens
+                }
                 if cost > 0 {
                     weekDollarsByModel[modelID, default: 0] += cost
                 }
@@ -182,6 +185,9 @@ enum CostSummary {
                 if event.timestamp >= recentStart {
                     if billable > 0 {
                         recentTokensByModel[modelID, default: 0] += billable
+                    }
+                    if tokens > 0 {
+                        recentAllTokensByModel[modelID, default: 0] += tokens
                     }
                     if cost > 0 {
                         recentDollarsByModel[modelID, default: 0] += cost
@@ -192,10 +198,12 @@ enum CostSummary {
 
         let recentRows = modelRows(
             tokensByModel: recentTokensByModel,
+            allTokensByModel: recentAllTokensByModel,
             dollarsByModel: recentDollarsByModel
         )
         let weekRows = modelRows(
             tokensByModel: weekTokensByModel,
+            allTokensByModel: weekAllTokensByModel,
             dollarsByModel: weekDollarsByModel
         )
 
@@ -281,24 +289,29 @@ enum CostSummary {
         }
     }
 
-    /// Build sorted `ModelUsageRow`s from the two parallel per-model maps
+    /// Build sorted `ModelUsageRow`s from the parallel per-model maps
     /// for a given window. Shared between the 5h and weekly slices so
     /// both stay perfectly consistent in shape, sorting, and percent-share
     /// computation.
     private static func modelRows(
         tokensByModel: [String: Int],
+        allTokensByModel: [String: Int],
         dollarsByModel: [String: Double]
     ) -> [ModelUsageRow] {
         let totalTokens = tokensByModel.values.reduce(0, +)
         let totalDollars = dollarsByModel.values.reduce(0, +)
-        let modelIDs = Set(tokensByModel.keys).union(dollarsByModel.keys)
+        let modelIDs = Set(tokensByModel.keys)
+            .union(allTokensByModel.keys)
+            .union(dollarsByModel.keys)
         return modelIDs.map { modelID in
             let tokens = tokensByModel[modelID] ?? 0
+            let allTokens = allTokensByModel[modelID] ?? 0
             let dollars = dollarsByModel[modelID] ?? 0
             return ModelUsageRow(
                 model: modelID,
                 displayName: prettyModelName(modelID),
                 tokens: tokens,
+                allTokens: allTokens,
                 dollars: dollars,
                 percent: totalTokens > 0 ? Double(tokens) / Double(totalTokens) : 0,
                 dollarPercent: totalDollars > 0 ? dollars / totalDollars : 0

@@ -6,6 +6,9 @@ import SwiftUI
 struct ModelsView: View {
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
     @ObservedObject private var usage = UsageStore.shared
+    @ObservedObject private var cost = CostStore.shared
+    @ObservedObject private var codexProfile = CodexCostProfileStore.shared
+    @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
 
     var body: some View {
         HStack(spacing: 0) {
@@ -26,7 +29,16 @@ struct ModelsView: View {
         VStack(alignment: .leading, spacing: 5) {
             if visible {
                 weeklyQuotaStrip(provider: provider)
-                PerModelBreakdown(provider: provider, metric: .tokens)
+                switch provider {
+                case .claude:
+                    PerModelBreakdown(provider: provider, metric: .tokens)
+                case .codex:
+                    PerModelBreakdown(
+                        provider: provider,
+                        metric: .tokens,
+                        cost: cost.codexCost(profileID: codexProfile.selectedProfileID)
+                    )
+                }
             } else {
                 Spacer(minLength: 0)
                 Text(L10n.tr("Provider hidden"))
@@ -41,25 +53,52 @@ struct ModelsView: View {
 
     @ViewBuilder
     private func weeklyQuotaStrip(provider: AlertEngine.Provider) -> some View {
-        let windows: [ProviderQuotaWindow] = {
-            switch provider {
-            case .claude: return usage.claude.windows
-            case .codex: return usage.codexHeadlineUsage.windows
-            }
-        }()
-        let weekly = windows.filter { $0.id.contains("week") }
-        if !weekly.isEmpty {
-            HStack(spacing: 7) {
-                ForEach(weekly) { window in
-                    Text("\(shortWeeklyLabel(window.label)) \(Int(((1 - window.usedPercent) * 100).rounded()))%")
-                        .font(Typography.micro)
-                        .foregroundStyle(.white.opacity(0.48))
-                        .lineLimit(1)
+        if provider == .codex, codexProfile.selectedProfileID == nil {
+            Text(L10n.tr("All accounts · quotas are not combined"))
+                .font(Typography.micro)
+                .foregroundStyle(.white.opacity(0.42))
+                .lineLimit(1)
+        } else {
+            let windows: [ProviderQuotaWindow] = {
+                switch provider {
+                case .claude: return usage.claude.windows
+                case .codex:
+                    guard let selectedID = codexProfile.selectedProfileID else { return [] }
+                    return usage.codexByProfile[selectedID]?.windows ?? []
                 }
+            }()
+            let weekly = windows.filter { $0.id.contains("week") }
+            if !weekly.isEmpty {
+                HStack(spacing: 7) {
+                    ForEach(weekly) { window in
+                        quotaLabel(window)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(
+                    "\(provider == .claude ? "Claude" : "Codex") weekly quota \(usageDisplay.mode.label.lowercased())"
+                )
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(provider == .claude ? "Claude" : "Codex") weekly quota remaining")
         }
+    }
+
+    private func quotaLabel(_ window: ProviderQuotaWindow) -> some View {
+        Text(
+            "\(shortWeeklyLabel(window.label)) · "
+                + "\(L10n.tr(usageDisplay.mode.label)) \(quotaPercent(window))%"
+        )
+        .font(Typography.micro)
+        .foregroundStyle(.white.opacity(0.48))
+        .lineLimit(1)
+    }
+
+    private func quotaPercent(_ window: ProviderQuotaWindow) -> Int {
+        let fraction: Double
+        switch usageDisplay.mode {
+        case .used:      fraction = window.usedPercent
+        case .remaining: fraction = 1 - window.usedPercent
+        }
+        return Int((max(0, min(1, fraction)) * 100).rounded())
     }
 
     private func shortWeeklyLabel(_ label: String) -> String {

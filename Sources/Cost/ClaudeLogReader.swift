@@ -17,8 +17,7 @@ enum ClaudeLogReader {
     /// network. Safe to call from a background thread.
     static func scan(lookbackDays: Int = 30) -> [TokenEvent] {
         let cutoff = Date().addingTimeInterval(-Double(lookbackDays) * 86400)
-        var seen = Set<String>()
-        var out: [TokenEvent] = []
+        var cachedEvents: [CachedEvent] = []
 
         LogParseCache.walk(
             roots: projectRoots(),
@@ -27,25 +26,49 @@ enum ClaudeLogReader {
             cacheVersion: cacheVersion,
             parse: parseFile(at:),
             emit: { (ev: CachedEvent) in
-                guard ev.timestamp >= cutoff else { return }
-                if !ev.dedupKey.isEmpty {
-                    if seen.contains(ev.dedupKey) { return }
-                    seen.insert(ev.dedupKey)
-                }
-                out.append(TokenEvent(
-                    provider: .claude,
-                    timestamp: ev.timestamp,
-                    model: ev.model,
-                    inputTokens: ev.inputTokens,
-                    outputTokens: ev.outputTokens,
-                    cacheCreationTokens: ev.cacheCreationTokens,
-                    cacheReadTokens: ev.cacheReadTokens,
-                    projectID: ev.projectID,
-                    projectName: ev.projectName
-                ))
+                cachedEvents.append(ev)
             }
         )
-        return out
+        return deduplicated(cachedEvents).compactMap { ev in
+            guard ev.timestamp >= cutoff else { return nil }
+            return TokenEvent(
+                provider: .claude,
+                timestamp: ev.timestamp,
+                model: ev.model,
+                inputTokens: ev.inputTokens,
+                outputTokens: ev.outputTokens,
+                cacheCreationTokens: ev.cacheCreationTokens,
+                cacheReadTokens: ev.cacheReadTokens,
+                projectID: ev.projectID,
+                projectName: ev.projectName
+            )
+        }
+    }
+
+    /// Claude can persist several streaming snapshots for one provider
+    /// request. Input/cache fields are stable, while output grows until the
+    /// final snapshot. Retain the largest output count instead of whichever
+    /// partial record happens to be encountered first.
+    static func deduplicated(_ events: [CachedEvent]) -> [CachedEvent] {
+        var output: [CachedEvent] = []
+        var indexByKey: [String: Int] = [:]
+        output.reserveCapacity(events.count)
+
+        for event in events {
+            guard !event.dedupKey.isEmpty else {
+                output.append(event)
+                continue
+            }
+            if let index = indexByKey[event.dedupKey] {
+                if event.outputTokens > output[index].outputTokens {
+                    output[index] = event
+                }
+            } else {
+                indexByKey[event.dedupKey] = output.count
+                output.append(event)
+            }
+        }
+        return output
     }
 
     private static func projectRoots() -> [URL] {
@@ -152,7 +175,7 @@ enum ClaudeLogReader {
     /// Bump on any breaking change to `CachedEvent` to force a clean re-parse.
     private static let cacheVersion = 2
 
-    private struct CachedEvent: Codable {
+    struct CachedEvent: Codable {
         let timestamp: Date
         let model: String
         let inputTokens: Int

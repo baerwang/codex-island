@@ -21,6 +21,7 @@
 "⚠ %d unpriced" = "⚠ %d unpriced";
 "$%@ cumulative" = "$%@ cumulative";
 "5h" = "5h";
+"7d" = "7d";
 "All tokens" = "All tokens";
 "All Tokens" = "All Tokens";
 "TOTAL" = "TOTAL";
@@ -75,7 +76,7 @@
 "Mixed Use" = "Mixed Use";
 "Mostly Claude" = "Mostly Claude";
 "Mostly Codex" = "Mostly Codex";
-"no %@ activity in last 5h or this week" = "no %@ activity in last 5h or this week";
+"no %@ activity in last 5h or 7d" = "no %@ activity in last 5h or 7d";
 "No Activity" = "No Activity";
 "Notch-style" = "Notch-style";
 "Numeric" = "Numeric";
@@ -131,7 +132,7 @@
 "Usage" = "Usage";
 "Models" = "Models";
 "MODELS" = "MODELS";
-"Models shows local 5h and weekly activity" = "Models shows local 5h and weekly activity";
+"Models shows local rolling 5h and 7d activity" = "Models shows local rolling 5h and 7d activity";
 "Provider hidden" = "Provider hidden";
 "Updates" = "Updates";
 "VALUE" = "VALUE";
@@ -179,6 +180,7 @@
 "5 hours" = "5 hours";
 "Quota mode" = "Quota mode";
 "All" = "All";
+"All accounts · quotas are not combined" = "All accounts · quotas are not combined";
 "%@ LOCAL TOKEN USAGE" = "%@ LOCAL TOKEN USAGE";
 "LOCAL TOKENS" = "LOCAL TOKENS";
 "Account" = "Account";
