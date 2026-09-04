@@ -105,22 +105,18 @@ struct IslandRootView: View {
                     // silhouette grew on entering peek). 14pt inset from the
                     // silhouette's new leading edge keeps it visually
                     // breathing inside the rounded corner.
-                    if model.state != .compact {
-                        PeekPillOverlay(
-                            provider: .claude,
-                            topPadding: max(0, (model.notch.height - 14) / 2),
-                            pillsVisible: pillsVisible
-                        )
-                    }
+                    PeekPillOverlay(
+                        provider: .claude,
+                        topPadding: max(0, (model.notch.height - 14) / 2),
+                        pillsVisible: pillsVisible
+                    )
                 }
                 .overlay(alignment: .topTrailing) {
-                    if model.state != .compact {
-                        PeekPillOverlay(
-                            provider: .codex,
-                            topPadding: max(0, (model.notch.height - 14) / 2),
-                            pillsVisible: pillsVisible
-                        )
-                    }
+                    PeekPillOverlay(
+                        provider: .codex,
+                        topPadding: max(0, (model.notch.height - 14) / 2),
+                        pillsVisible: pillsVisible
+                    )
                 }
                 .overlay(alignment: .bottomLeading) {
                     // Utility control, not dashboard status. Keep it in a
@@ -147,10 +143,12 @@ struct IslandRootView: View {
                     }
                     // Plain click: enter the full panel. Works from .peek
                     // (the common case after hover) or .compact (cold click).
-                    // Pills travel outward with the growing shape under the
-                    // single openMorph spring, then quietly retire after the
-                    // expanded content has settled.
+                    // Retire peek text immediately. The black panel then grows
+                    // on its own before expanded content enters 220ms later.
                     guard model.state == .peek || model.state == .compact else { return }
+                    withAnimation(.easeOut(duration: 0.08)) {
+                        pillsVisible = false
+                    }
                     withAnimation(.openMorph) {
                         model.setState(.expanded)
                     }
@@ -158,16 +156,6 @@ struct IslandRootView: View {
                         guard model.state == .expanded else { return }
                         withAnimation(.strongEaseOut) {
                             contentVisible = true
-                        }
-                    }
-                    // Guard against a hover-out landing inside the 250ms
-                    // wait: under always-show it restores the pills at peek,
-                    // and this stale callback would hide them again — leaving
-                    // the rest state pill-less until the next hover cycle.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                        guard model.state == .expanded else { return }
-                        withAnimation(.easeOut(duration: 0.18)) {
-                            pillsVisible = false
                         }
                     }
                 }
@@ -182,20 +170,14 @@ struct IslandRootView: View {
                         NSHapticFeedbackManager.defaultPerformer.perform(
                             .levelChange, performanceTime: .now
                         )
-                        // PEEK ENTER: shape morphs out to peek width. Pills
-                        // fade in 60ms later so the eye sees the shape commit
-                        // first, then content arrives. Hover does NOT open
-                        // the full panel — that requires a click.
+                        // PEEK ENTER: reveal the black surface first, then the
+                        // quota text. Hover does not open the full panel.
                         if model.state == .compact {
-                            withAnimation(.openMorph) {
-                                model.setState(.peek)
-                            }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
-                                guard model.state == .peek else { return }
-                                withAnimation(.easeOut(duration: 0.18)) {
-                                    pillsVisible = true
-                                }
-                            }
+                            openPeek()
+                        } else if model.state == .peek, !pillsVisible {
+                            // Re-entering during the short close delay leaves
+                            // the surface open but the text fading out.
+                            revealPeekContent()
                         }
                     } else {
                         scheduleHoverExit()
@@ -222,7 +204,7 @@ struct IslandRootView: View {
             // than morphing out under their gaze.
             if alwaysShow.enabled && model.state == .compact {
                 model.setState(.peek)
-                pillsVisible = true
+                revealPeekContent()
             }
         }
         .onChange(of: alwaysShow.enabled) { enabled in
@@ -233,15 +215,7 @@ struct IslandRootView: View {
             guard !hovering, model.state != .expanded else { return }
             if enabled {
                 if model.state == .compact {
-                    withAnimation(.openMorph) {
-                        model.setState(.peek)
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
-                        guard model.state == .peek, !hovering else { return }
-                        withAnimation(.easeOut(duration: 0.18)) {
-                            pillsVisible = true
-                        }
-                    }
+                    openPeek()
                 }
             } else {
                 if model.state == .peek {
@@ -300,6 +274,23 @@ struct IslandRootView: View {
         hoverExitToken = UUID()
     }
 
+    private func openPeek() {
+        pillsVisible = false
+        withAnimation(.peekMorph) {
+            model.setState(.peek)
+        }
+        revealPeekContent()
+    }
+
+    /// The pill overlays stay mounted at zero opacity, so this delayed
+    /// animation remains inside SwiftUI's render transaction. There is no
+    /// timer boundary to produce a dropped frame between surface and text.
+    private func revealPeekContent() {
+        withAnimation(.peekContentReveal) {
+            pillsVisible = true
+        }
+    }
+
     private func restoreExpandedContentIfNeeded() {
         guard model.state == .expanded, !contentVisible else { return }
         withAnimation(.strongEaseOut) {
@@ -328,9 +319,7 @@ struct IslandRootView: View {
                 }
             }
             if alwaysShow.enabled && !pillsVisible {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    pillsVisible = true
-                }
+                revealPeekContent()
             }
         }
     }
@@ -342,17 +331,7 @@ struct IslandRootView: View {
         guard model.state != .expanded else { return }
 
         if model.state == .compact {
-            withAnimation(.openMorph) {
-                model.setState(.peek)
-            }
-            // Match the hover-in cadence so the pulse looks identical to a
-            // user-initiated peek: shape commits first, content follows.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
-                guard model.state == .peek else { return }
-                withAnimation(.easeOut(duration: 0.18)) {
-                    pillsVisible = true
-                }
-            }
+            openPeek()
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
@@ -581,7 +560,9 @@ private struct PeekPillOverlay: View {
         // lockstep with the rest of the chrome.
         .opacity((pillsVisible && isVisible) ? 1 : 0)
         .animation(.openMorph, value: isVisible)
-        .offset(x: pillsVisible ? 0 : (provider == .claude ? -6 : 6))
+        // Start toward the notch and follow the black surface outward. The old
+        // outward offset put text ahead of the expanding silhouette.
+        .offset(x: pillsVisible ? 0 : (provider == .claude ? 4 : -4))
         .allowsHitTesting(false)
         .accessibilityLabel(peekLabel(for: window, provider: providerLabel, weekly: currentWindowIsWeekly))
         // Mirror the visual opacity gate exactly — both `pillsVisible` and

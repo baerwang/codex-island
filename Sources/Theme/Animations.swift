@@ -24,6 +24,13 @@ extension Animation {
     static let openMorph = Animation.spring(response: 0.42, dampingFraction: 0.82)
     static let closeMorph = Animation.spring(response: 0.30, dampingFraction: 0.88)
 
+    /// Peek is one continuous motion: a well-damped surface spring starts,
+    /// then quota text joins during its settle instead of after a hard timer.
+    static let peekMorph = Animation.spring(response: 0.34, dampingFraction: 0.92)
+    static let peekContentReveal = Animation
+        .timingCurve(0.23, 1, 0.32, 1, duration: 0.18)
+        .delay(0.10)
+
     /// Selected-day detail is a small disclosure inside an already-open
     /// panel, so it should be faster and more damped than the full island
     /// open. The collapse is shorter because exits should get out of the
