@@ -291,8 +291,7 @@ enum CLIStatusProbe {
             options: .regularExpression
         ) != nil
         return completeQuota
-            || lower.contains("limits: data not available")
-            || lower.contains("model provider:")
+            || CLIUsageParser.codexUsesNonSubscriptionProvider(text)
     }
 
     /// Called when the app stops its refresh lifecycle. SIGKILL is warranted

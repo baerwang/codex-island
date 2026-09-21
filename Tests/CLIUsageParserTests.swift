@@ -137,6 +137,30 @@ struct CLIUsageParserTests {
         expect(codex.windows.count == 3, "Codex retains every weekly/model window")
         expect(codex.plan == "pro", "Codex plan parses")
 
+        // Redacted Codex 0.155.1 subscription status. The provider field is
+        // now present even when logged in to ChatGPT, and this account only
+        // reports a weekly window.
+        let codexOpenAIProvider = CLIUsageParser.parseCodex("""
+        │  Model:                gpt-6-astra (reasoning xhigh, summaries auto) │
+        │  Model provider:       openai                                      │
+        │  Account:              user@example.com (Pro)                       │
+        │  Weekly limit:         [███████████████████░] 97% left              │
+        │                        (resets 10:23 on 28 Sep)                     │
+        """, timedOut: false)
+        expect(codexOpenAIProvider.plan == "pro", "Codex OpenAI provider retains the subscription plan")
+        expect(codexOpenAIProvider.weekly.percentInt == 3, "Codex OpenAI provider retains real weekly quota")
+        expect(codexOpenAIProvider.weekly.error == nil, "Codex OpenAI provider is not classified as API mode")
+        expect(!codexOpenAIProvider.fiveHour.hasReading, "Codex OpenAI provider does not invent an absent 5h window")
+        expect(codexOpenAIProvider.windows.count == 1, "Codex OpenAI provider preserves the weekly detail")
+
+        let codexPendingLimits = CLIUsageParser.parseCodex("""
+        Model provider: openai
+        Account: user@example.com (Pro)
+        Limits: data not available yet
+        """, timedOut: false)
+        expect(codexPendingLimits.plan != "api", "temporarily unavailable Codex limits do not imply API mode")
+        expect(codexPendingLimits.weekly.error == "status refresh pending", "unavailable Codex limits remain retryable")
+
         let codexNamedQuotaPool = CLIUsageParser.parseCodex("""
         │  gpt-reserve Weekly limit: 100% left
         │  (resets 09:45 on 10 Sep)
@@ -212,6 +236,7 @@ struct CLIUsageParserTests {
         )
 
         let codexAPI = CLIUsageParser.parseCodex("""
+        Model provider: openai
         Authentication: API key
         API-key authentication does not include subscription limits.
         """, timedOut: false)
@@ -268,6 +293,28 @@ struct CLIUsageParserTests {
         expect(
             !CLIStatusProbe.codexStatusFrameDetected(in: "Weekly limit:"),
             "Codex partial status label does not stop adaptive retries"
+        )
+        expect(
+            !CLIStatusProbe.codexStatusFrameDetected(in: "│ Model provider: openai │"),
+            "Codex OpenAI provider alone does not stop retries before quota arrives"
+        )
+        expect(
+            !CLIStatusProbe.codexStatusFrameDetected(
+                in: "Model provider: openai\nLimits: data not available yet"
+            ),
+            "Codex unavailable subscription limits keep adaptive retries active"
+        )
+        expect(
+            CLIStatusProbe.codexStatusFrameDetected(
+                in: "Model provider: openai\nWeekly limit: 97% left (resets 10:23 on 28 Sep)"
+            ),
+            "Codex OpenAI provider with a complete quota stops retries"
+        )
+        expect(
+            CLIStatusProbe.codexStatusFrameDetected(
+                in: "Model provider: openai\nAuthentication: API key"
+            ),
+            "Codex explicit API login stops retries without subscription quota"
         )
         expect(
             CLIStatusProbe.codexStatusFrameDetected(

@@ -24,9 +24,14 @@ struct CLIStatusProbeSmoke {
             print(sanitizedDiagnostics(transcript.text))
         }
         let usage = CLIUsageParser.parseCodex(transcript.text, timedOut: transcript.timedOut)
-        print("Codex: 5h \(usage.fiveHour.percentInt)% used · week \(usage.weekly.percentInt)% used · windows \(usage.windows.count)")
-        if let error = usage.fiveHour.error { print("Codex probe: \(error)") }
-        exit(usage.fiveHour.error == nil && usage.weekly.error == nil ? 0 : 1)
+        let fiveHour = usage.fiveHour.hasReading ? "\(usage.fiveHour.percentInt)% used" : "not reported"
+        let weekly = usage.weekly.hasReading ? "\(usage.weekly.percentInt)% used" : "not reported"
+        print("Codex: 5h \(fiveHour) · week \(weekly) · windows \(usage.windows.count)")
+        let hasQuota = usage.fiveHour.hasReading || usage.weekly.hasReading
+        if !hasQuota, let error = usage.fiveHour.error ?? usage.weekly.error {
+            print("Codex probe: \(error)")
+        }
+        exit(hasQuota ? 0 : 1)
     }
 
     /// Opt-in, redacted diagnostics for the native PTY harness. Never print a

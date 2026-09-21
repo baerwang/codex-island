@@ -240,11 +240,7 @@ enum CLIUsageParser {
         // as a recognized state instead of asking the user to retry a status
         // screen that cannot contain 5h/weekly limits. Local-log cost/token
         // aggregation remains available for the same configured CODEX_HOME.
-        let noSubscriptionLimits = text.range(
-            of: #"(?i)(api[- ]key|limits:\s*data\s+not\s+available|model\s+provider:)"#,
-            options: .regularExpression
-        ) != nil
-        if noSubscriptionLimits {
+        if codexUsesNonSubscriptionProvider(text) {
             return UsageFetcher.noSubscriptionUsage(plan: "api")
         }
         guard fiveHour != nil || weekly != nil else {
@@ -270,6 +266,22 @@ enum CLIUsageParser {
             plan: plan,
             windows: windows
         )
+    }
+
+    /// Codex 0.155.1 also prints `Model provider: openai` for ChatGPT
+    /// subscriptions. Only an explicit API-key login or a custom provider
+    /// identifies non-subscription mode; unavailable limits can be temporary.
+    static func codexUsesNonSubscriptionProvider(_ text: String) -> Bool {
+        if text.range(of: #"(?i)api[- ]key"#, options: .regularExpression) != nil {
+            return true
+        }
+        let screen = text.replacingOccurrences(
+            of: "[\u{2500}-\u{259F}]", with: " ", options: .regularExpression
+        )
+        guard let provider = capture(
+            in: screen, pattern: #"(?im)^[ \t]*Model\s+provider:[ \t]*([^\s]+)"#
+        ) else { return false }
+        return provider != "openai"
     }
 
     private static func isUnauthenticated(_ text: String) -> Bool {
