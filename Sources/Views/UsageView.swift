@@ -125,12 +125,18 @@ struct ChartsBlock: View {
 
     var body: some View {
         HStack(spacing: 18) {
-            ChartTile(style: style, color: color, labelKey: "5h",
-                      window: usage.fiveHour, seed: seed,
-                      provider: provider, windowKind: .fiveHour)
-            ChartTile(style: style, color: color, labelKey: "week",
-                      window: usage.weekly, seed: seed + 1,
-                      provider: provider, windowKind: .weekly)
+            // Collapse a window only when the other one has a reading and
+            // this one was omitted. Loading and real errors keep their tiles.
+            if !usage.fiveHour.isUnreported || !usage.weekly.hasReading {
+                ChartTile(style: style, color: color, labelKey: "5h",
+                          window: usage.fiveHour, seed: seed,
+                          provider: provider, windowKind: .fiveHour)
+            }
+            if !usage.weekly.isUnreported || !usage.fiveHour.hasReading {
+                ChartTile(style: style, color: color, labelKey: "week",
+                          window: usage.weekly, seed: seed + 1,
+                          provider: provider, windowKind: .weekly)
+            }
         }
         .transition(.chartSwap.animation(.chartSwap))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -215,13 +221,8 @@ struct ChartTile: View {
             let delta = max(0, r.timeIntervalSinceNow)
             return L10n.tr("resets in %@", Duration.compact(delta))
         }
-        // "no data" is our internal sentinel for "CLI did not report this
-        // window" — most commonly a plan that does not report that window.
-        // Hide it so the tile reads as a passive
-        // window-context cue (the "5h"/"week" header label communicates the
-        // window type) instead of looking broken. Real errors still surface.
-        // Any other CLI failure is a genuine per-window caption worth showing
-        // verbatim.
+        // Cold-start placeholders have no useful caption. Actual CLI
+        // failures still surface verbatim.
         if let err = window.error, err != "no data" {
             return err
         }

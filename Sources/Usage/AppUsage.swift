@@ -1,8 +1,8 @@
 import Foundation
 
-/// The two rate-limit windows every provider reports. Named here rather than
-/// beside the history store because they name `AppUsage`'s own two fields —
-/// and so the pure value layer stays free of store dependencies.
+/// The two headline rate-limit windows a provider may report. Named here
+/// rather than beside the history store because they name `AppUsage`'s own
+/// two fields — and so the pure value layer stays free of store dependencies.
 enum UsageWindow: String, Codable {
     case fiveHour
     case weekly

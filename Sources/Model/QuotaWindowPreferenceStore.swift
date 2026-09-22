@@ -2,8 +2,8 @@ import Combine
 import Foundation
 
 /// Which rate-limit window each provider contributes to its compact island
-/// pill. The expanded Usage page still shows both windows; this only controls
-/// the at-a-glance number. Weekly is the calmer, more useful default.
+/// pill. The expanded Usage page shows available headline windows; this only
+/// controls the at-a-glance number. Weekly is the calmer, more useful default.
 @MainActor
 final class QuotaWindowPreferenceStore: ObservableObject {
     static let shared = QuotaWindowPreferenceStore()
